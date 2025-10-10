@@ -45,11 +45,12 @@ def get_audio_clip(url, download_dir):
         try:
             info = ydl.extract_info(url, download=True)
             video_id = info['id']
+            upload_date = info.get('upload_date', None) # Using .get for safety
             audio_path = download_dir / f"{video_id}.mp3"
-            return audio_path, video_id
+            return audio_path, video_id, upload_date
         except yt_dlp.utils.DownloadError:
             # Handle download errors, maybe log them
-            return None, None
+            return None, None, None
 
 def trim_audio_clip(input_path, output_path, start_time, end_time):
     """Trims an audio file to the specified start and end times.
@@ -64,7 +65,7 @@ def trim_audio_clip(input_path, output_path, start_time, end_time):
     trimmed_audio = audio[start_time * 1000:end_time * 1000]  # pydub works in milliseconds
     trimmed_audio.export(output_path, format="mp3")
 
-def update_csv(csv_path, url, video_id, file_name, file_path):
+def update_csv(csv_path, url, video_id, file_name, file_path, upload_date):
     """Updates the CSV file with processing information for a video.
 
     Args:
@@ -73,16 +74,20 @@ def update_csv(csv_path, url, video_id, file_name, file_path):
         video_id (str): The YouTube video ID.
         file_name (str): The name of the processed file.
         file_path (str): The path to the processed file.
+        upload_date (str): The upload date of the video.
     """
     df = pd.read_csv(csv_path)
     # Find the row to update based on the URL
     row_index = df.index[df['url'] == url].tolist()
     if row_index:
         idx = row_index[0]
+        if 'upload_date' not in df.columns:
+            df['upload_date'] = None
         df.loc[idx, 'id'] = video_id
         df.loc[idx, 'processed'] = True
         df.loc[idx, 'file_name'] = file_name
         df.loc[idx, 'file_path'] = str(file_path)
+        df.loc[idx, 'upload_date'] = upload_date
         df.to_csv(csv_path, index=False)
 
 def main():
@@ -97,7 +102,7 @@ def main():
         start_time = row.get('start_time')
         end_time = row.get('end_time')
         
-        audio_path, video_id = get_audio_clip(url, AUDIO_DIR)
+        audio_path, video_id, upload_date = get_audio_clip(url, AUDIO_DIR)
 
         if audio_path and video_id and audio_path.exists():
             trim_audio_clip(
@@ -114,7 +119,8 @@ def main():
                 url=url,
                 video_id=video_id,
                 file_name=file_name,
-                file_path=audio_path
+                file_path=audio_path,
+                upload_date=upload_date
             )
 
 if __name__ == "__main__":
