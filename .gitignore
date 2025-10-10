@@ -1,4 +1,5 @@
 # folder stuff for the local environment
 /.vscode
-/.venvFiles
+/venvFiles
 /downloads
+.python-version
