@@ -4,3 +4,6 @@
 /downloads
 .python-version
 video_info.csv
+*.db
+GEMINI.md
+/main/downloads
