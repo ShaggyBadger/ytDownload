@@ -7,3 +7,4 @@ video_info.csv
 *.db
 GEMINI.md
 /main/downloads
+*.env
