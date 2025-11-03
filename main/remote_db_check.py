@@ -32,7 +32,7 @@ def check_remote_status_and_fetch_completed():
 
         # 2. Execute the script on the remote machine
         print("Executing remote script to check database status...")
-        remote_cmd = f"cd {REMOTE_PROJECT_DIR} && source venvFiles/bin/activate && python3 {REMOTE_SCRIPT_PATH}"
+        remote_cmd = f"cd {REMOTE_PROJECT_DIR} && source venvFiles39/bin/activate && python3 {REMOTE_SCRIPT_PATH}"
         json_output = run_remote_cmd(remote_cmd)
 
         # 3. Parse the JSON output

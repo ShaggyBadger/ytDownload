@@ -33,20 +33,23 @@ def check_remote_db():
         conn = sqlite3.connect(DB_PATH)
         create_table_if_not_exists(conn)
         cursor = conn.cursor()
-        cursor.execute("SELECT mp3_id, status, transcript_path FROM files")
+        cursor.execute("SELECT id, mp3_id, mp3_path, transcript_path, status, processing_time_seconds FROM files")
         rows = cursor.fetchall()
         conn.close()
 
         for row in rows:
-            mp3_id, status, transcript_path = row
+            id, mp3_id, mp3_path, transcript_path, status, processing_time_seconds = row
             transcript_exists = False
             if transcript_path and Path(transcript_path).exists():
                 transcript_exists = True
             
             results.append({
-                "mp3Id": mp3_id,
-                "status": status,
+                "id": id,
+                "mp3_id": mp3_id,
+                "mp3_path": mp3_path,
                 "transcript_path": transcript_path,
+                "status": status,
+                "processing_time_seconds": processing_time_seconds,
                 "transcript_exists": transcript_exists
             })
 

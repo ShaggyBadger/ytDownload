@@ -3,7 +3,7 @@ import fetch_mp3
 import db_info
 import transcribe
 import transfer_files
-import remote_db_check
+import remote_db_info
 
 def display_menu():
     """Displays the main menu."""
@@ -13,7 +13,7 @@ def display_menu():
     print("3: Display DB Status")
     print("4: Transcribe Audio")
     print("5: Transfer files for transcription")
-    print("6: Check remote status and fetch transcripts")
+    print("6: Display remote DB status")
     print("q: Quit")
     print("-----------------")
 
@@ -35,7 +35,7 @@ def main():
         elif choice == '5':
             transfer_files.prepare_and_transfer_files()
         elif choice == '6':
-            remote_db_check.check_remote_status_and_fetch_completed()
+            remote_db_info.display_remote_db_info()
         elif choice.lower() == 'q':
             print("Exiting.")
             break

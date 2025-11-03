@@ -25,7 +25,7 @@ def process_transcription():
         # Command to start the transcription process in the background
         remote_cmd = (
             f"cd {REMOTE_PROJECT_DIR}/main && "
-            f"source ../venvFiles/bin/activate && "
+            f"source ../venvFiles39/bin/activate && "
             f"nohup python3 controller.py > /dev/null 2>&1 &"
         )
         print(f"Running remote command: {remote_cmd}")
