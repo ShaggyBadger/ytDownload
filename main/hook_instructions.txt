@@ -1,0 +1,63 @@
+# How to use the Sermon Transcriber Application
+
+This document explains how to use the sermon transcriber application, which is now controlled by a single script: `controller.py`.
+
+## Overview
+
+The application transcribes audio files using OpenAI's Whisper. The process is managed through a database and initiated by a JSON file. The `controller.py` script automates the entire workflow, making it easy to start the transcription process with a single command.
+
+## Prerequisites
+
+Before running the application, you need to make sure of the following:
+
+1.  **`new_files.json`**: This file must be present in the same directory as the scripts (`/home/alexander/pyProjects/sermonTranscriber/main/`). It contains a list of audio files to be transcribed. The format for this JSON file is an array of objects, where each object has an `mp3Id` (integer) and an `mp3Name` (string, the name of the audio file).
+
+    *Example `new_files.json`:*
+    ```json
+    [
+      {
+        "mp3Id": 1,
+        "mp3Name": "audio1.mp3"
+      },
+      {
+        "mp3Id": 2,
+        "mp3Name": "audio2.mp3"
+      }
+    ]
+    ```
+
+2.  **Audio Files**: The audio files listed in `new_files.json` must be placed in the `audio_files` directory, which is located at `/home/alexander/pyProjects/sermonTranscriber/main/audio_files/`.
+
+## Running the Application
+
+To start the transcription process, open your terminal, navigate to the project directory (`/home/alexander/pyProjects/sermonTranscriber/main/`), and run the following command:
+
+```bash
+python3 controller.py
+```
+
+## What the Script Does
+
+The `controller.py` script performs the following steps in sequence:
+
+1.  **Processes `new_files.json`**: It reads the `new_files.json` file and adds the information about each audio file to a SQLite database (`sermons.db`). Each new file is given a status of "pending". This step is handled by the logic from `process_json.py`.
+
+2.  **Transcribes Audio Files**: The script then queries the database for any files with a "pending" status. For each pending file, it performs the following:
+    *   It uses the Whisper ASR model to transcribe the audio file.
+    *   The transcription process is timed.
+    *   Upon successful transcription, the file's status in the database is updated to "complete", and the time taken for the transcription is recorded.
+    *   If the transcription fails, the status is updated to "failed".
+    *   This step is handled by the logic from `main.py`.
+
+## Output
+
+The completed transcriptions are saved as text files in the `completed_transcriptions` directory, located at `/home/alexander/pyProjects/sermonTranscriber/main/completed_transcriptions/`.
+
+## Included Scripts
+
+-   `controller.py`: The main script to run the entire process.
+-   `process_json.py`: Handles populating the database from `new_files.json`.
+-   `main.py`: Handles the transcription of pending files from the database.
+-   `database.py`: Defines the database schema.
+-   `crud.py`: Contains functions for database operations.
+-   `transcriber.py`: A wrapper for the Whisper transcription tool.
