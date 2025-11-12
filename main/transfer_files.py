@@ -75,3 +75,50 @@ def prepare_and_transfer_files():
 
 if __name__ == "__main__":
     prepare_and_transfer_files()
+
+
+def transfer_all_mp3_info_json():
+    """
+    Prepares and transfers a JSON file containing mp3Id and mp3Name for all
+    videos that have completed stage 2 (MP3 download and trim).
+    """
+    db_session = db.SessionLocal()
+    local_json_path = None
+    try:
+        # 1. Get all videos that have completed stage 2
+        all_completed_mp3_videos = db_session.query(db.Video).filter(
+            db.Video.stage_2_status == "completed"
+        ).all()
+
+        if not all_completed_mp3_videos:
+            print("No videos with completed MP3s found in the database.")
+            return
+
+        print(f"Found {len(all_completed_mp3_videos)} videos with completed MP3s.")
+
+        # 2. Prepare the JSON data with mp3Id and mp3Name
+        json_data = []
+        for video in all_completed_mp3_videos:
+            json_data.append({
+                "mp3Id": video.id,
+                "mp3Name": Path(video.mp3_path).name
+            })
+
+        # Create a temporary local JSON file
+        local_json_path = Path(__file__).parent / "all_files.json"
+        with open(local_json_path, "w") as f:
+            json.dump(json_data, f, indent=2)
+
+        # 3. Transfer the JSON file
+        print("Transferring all MP3 info JSON to the remote desktop...")
+        # Use the same remote path as the standard transfer
+        sftp_put(str(local_json_path), REMOTE_JSON_PATH)
+        print(f"Transferred {local_json_path.name} to {REMOTE_JSON_PATH}")
+
+        print("All MP3 info JSON transfer complete.")
+
+    finally:
+        db_session.close()
+        # Clean up the temporary JSON file
+        if local_json_path and local_json_path.exists():
+            local_json_path.unlink()

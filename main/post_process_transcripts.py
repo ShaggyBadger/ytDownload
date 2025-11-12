@@ -1,0 +1,314 @@
+
+import db
+import re
+from pathlib import Path
+import subprocess
+
+def call_gemini(prompt):
+    # Run gemini CLI in non-interactive mode with the prompt
+    result = subprocess.run(
+        ["gemini", "-p", prompt],
+        capture_output=True,
+        text=True
+    )
+    
+    if result.returncode != 0:
+        # Something went wrong
+        raise RuntimeError(f"Gemini CLI error: {result.stderr.strip()}")
+    return result.stdout.strip()
+
+def initial_cleaning(transcript_processing_id):
+    """
+    Performs the initial cleaning of the raw transcript.
+    """
+    db_session = db.SessionLocal()
+    try:
+        # Get the transcript_processing object
+        tp = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.id == transcript_processing_id).first()
+        if not tp:
+            print(f"No transcript processing entry found with id: {transcript_processing_id}")
+            return
+
+        # Read the raw transcript
+        with open(tp.raw_transcript_path, 'r') as f:
+            raw_text = f.read()
+
+        # Perform initial cleaning (example: remove extra whitespace)
+        cleaned_text = " ".join(raw_text.split())
+
+        # Write the cleaned text to a new file
+        initial_cleaning_path = Path(tp.raw_transcript_path).with_suffix('.initial.txt')
+        with open(initial_cleaning_path, 'w') as f:
+            f.write(cleaned_text)
+
+        # Update the database
+        tp.initial_cleaning_path = str(initial_cleaning_path)
+        tp.status = "initial_cleaning_complete"
+        db_session.commit()
+        print(f"Initial cleaning complete for transcript processing id: {transcript_processing_id}")
+
+    finally:
+        db_session.close()
+
+def secondary_cleaning(transcript_processing_id):
+    """
+    Performs the secondary cleaning of the transcript using an LLM to add paragraph breaks.
+    """
+    db_session = db.SessionLocal()
+    try:
+        # Get the transcript_processing object
+        tp = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.id == transcript_processing_id).first()
+        if not tp:
+            print(f"No transcript processing entry found with id: {transcript_processing_id}")
+            return
+
+        # Read the initially cleaned transcript
+        with open(tp.initial_cleaning_path, 'r') as f:
+            initial_text = f.read()
+
+        # Create a prompt for the LLM
+        prompt = f"Please add paragraph breaks to the following text:\n\n{initial_text}"
+
+        # Call the LLM to add paragraph breaks
+        try:
+            cleaned_text = call_gemini(prompt)
+        except RuntimeError as e:
+            print(f"Error during secondary cleaning for transcript {tp.id}: {e}")
+            # Optionally, update the status to indicate an error
+            tp.status = "secondary_cleaning_failed"
+            db_session.commit()
+            return
+
+        # Write the cleaned text to a new file
+        secondary_cleaning_path = Path(tp.raw_transcript_path).with_suffix('.secondary.txt')
+        with open(secondary_cleaning_path, 'w') as f:
+            f.write(cleaned_text)
+
+        # Update the database
+        tp.secondary_cleaning_path = str(secondary_cleaning_path)
+        tp.status = "secondary_cleaning_complete"
+        db_session.commit()
+        print(f"Secondary cleaning complete for transcript processing id: {transcript_processing_id}")
+
+    finally:
+        db_session.close()
+
+
+def gen_metadata(transcript_processing_id):
+    """
+    Generates metadata for the transcript, including a title.
+    """
+    db_session = db.SessionLocal()
+    try:
+        tp = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.id == transcript_processing_id).first()
+        if not tp:
+            print(f"No transcript processing entry found with id: {transcript_processing_id}")
+            return
+
+        with open(tp.secondary_cleaning_path, 'r') as f:
+            secondary_text = f.read()
+
+        title = None
+        # Try to find title in text
+        match = re.search(r"The title of todays sermon is (.*?)[\.\n]", secondary_text, re.IGNORECASE)
+        if match:
+            title = match.group(1).strip()
+            prompt = f"Please generate the following metadata for the text below:\n\n1. A concise thesis statement.\n2. A structured outline.\n3. A brief summary.\n\n---\n\n{secondary_text}"
+        else:
+            prompt = f"Please generate the following metadata for the text below:\n\n1. A suitable title.\n2. A concise thesis statement.\n3. A structured outline.\n4. A brief summary.\n\n---\n\n{secondary_text}"
+
+        try:
+            generated_text = call_gemini(prompt)
+        except RuntimeError as e:
+            print(f"Error during metadata generation for transcript {tp.id}: {e}")
+            tp.status = "metadata_generation_failed"
+            db_session.commit()
+            return
+
+        if not title:
+            # Extract title from generated text
+            title_match = re.search(r"1. Title: (.*?)[\n]", generated_text, re.IGNORECASE)
+            if title_match:
+                title = title_match.group(1).strip()
+                # Remove title from generated text
+                generated_text = re.sub(r"1. Title: .*?[\n]", "", generated_text, count=1)
+
+        metadata_text = f"Title: {title}\n\n{generated_text}"
+
+        metadata_path = Path(tp.raw_transcript_path).with_suffix('.meta.txt')
+        with open(metadata_path, 'w') as f:
+            f.write(metadata_text)
+
+        tp.metadata_path = str(metadata_path)
+        tp.status = "metadata_generation_complete"
+        db_session.commit()
+        print(f"Metadata generation complete for transcript processing id: {transcript_processing_id}")
+
+    finally:
+        db_session.close()
+
+def final_pass(transcript_processing_id):
+    """
+    Performs the final pass on the transcript and records the final word count.
+    """
+    db_session = db.SessionLocal()
+    try:
+        # Get the transcript_processing object
+        tp = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.id == transcript_processing_id).first()
+        if not tp:
+            print(f"No transcript processing entry found with id: {transcript_processing_id}")
+            return
+
+        # Read the secondarily cleaned transcript
+        with open(tp.secondary_cleaning_path, 'r') as f:
+            secondary_text = f.read()
+
+        # Perform final pass (example: convert to lowercase)
+        cleaned_text = secondary_text.lower()
+
+        # Calculate the final word count
+        final_word_count = len(cleaned_text.split())
+
+        # Write the cleaned text to a new file
+        final_pass_path = Path(tp.raw_transcript_path).with_suffix('.final.txt')
+        with open(final_pass_path, 'w') as f:
+            f.write(cleaned_text)
+
+        # Update the database
+        tp.final_pass_path = str(final_pass_path)
+        tp.final_word_count = final_word_count
+        tp.status = "final_pass_complete"
+        db_session.commit()
+        print(f"Final pass complete for transcript processing id: {transcript_processing_id}. Final word count: {final_word_count}")
+
+    finally:
+        db_session.close()
+
+
+def llm_book_cleanup(transcript_processing_id):
+    """
+    Performs a multi-step LLM-based cleanup to make the transcript book-ready.
+    """
+    db_session = db.SessionLocal()
+    try:
+        tp = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.id == transcript_processing_id).first()
+        if not tp:
+            print(f"No transcript processing entry found with id: {transcript_processing_id}")
+            return
+
+        with open(tp.final_pass_path, 'r') as f:
+            text_to_clean = f.read()
+
+        # 1. Chunk the text
+        paragraphs = text_to_clean.split('\n\n')
+        chunks = []
+        current_chunk = ""
+        for p in paragraphs:
+            if len(current_chunk.split()) + len(p.split()) < 1000:
+                current_chunk += p + "\n\n"
+            else:
+                chunks.append(current_chunk)
+                current_chunk = p + "\n\n"
+        chunks.append(current_chunk)
+
+        cleaned_chunks = []
+        for i, chunk in enumerate(chunks):
+            print(f"Processing chunk {i+1}/{len(chunks)}...")
+            try:
+                # 2a. Disfluency Removal
+                prompt_disfluency = f"Please remove filler words like 'um', 'ah', and 'you know' from the following text:\n\n{chunk}"
+                cleaned_chunk = call_gemini(prompt_disfluency)
+
+                # 2b. Grammar and Spelling Correction
+                prompt_grammar = f"Please correct any grammar and spelling errors in the following text:\n\n{cleaned_chunk}"
+                cleaned_chunk = call_gemini(prompt_grammar)
+
+                # 2c. Stylistic Enhancement
+                prompt_style = f"Please improve the flow, clarity, and sentence structure of the following text to make it suitable for a book:\n\n{cleaned_chunk}"
+                cleaned_chunk = call_gemini(prompt_style)
+
+                cleaned_chunks.append(cleaned_chunk)
+            except RuntimeError as e:
+                print(f"Error processing chunk {i+1} for transcript {tp.id}: {e}")
+                tp.status = "book_cleanup_failed"
+                db_session.commit()
+                return
+
+        # 3. Reassemble the sermon
+        final_text = "\n\n".join(cleaned_chunks)
+
+        # 4. Save and Update
+        book_ready_path = Path(tp.raw_transcript_path).with_suffix('.book.txt')
+        with open(book_ready_path, 'w') as f:
+            f.write(final_text)
+
+        tp.book_ready_path = str(book_ready_path)
+        tp.status = "book_ready_complete"
+        db_session.commit()
+        print(f"Book-ready cleanup complete for transcript processing id: {transcript_processing_id}")
+
+    finally:
+        db_session.close()
+
+def update_metadata_file(transcript_processing_id):
+    """
+    Calculates word count and video duration, and appends them to the metadata file.
+    """
+    db_session = db.SessionLocal()
+    try:
+        tp = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.id == transcript_processing_id).first()
+        if not tp or not tp.book_ready_path or not tp.metadata_path:
+            print(f"Missing paths for transcript processing id: {transcript_processing_id}")
+            return
+
+        # Calculate word count
+        with open(tp.book_ready_path, 'r') as f:
+            book_text = f.read()
+        word_count = len(book_text.split())
+
+        # Get video duration
+        video = db_session.query(db.Video).filter(db.Video.id == tp.video_id).first()
+        duration = 0
+        if video and video.end_time and video.start_time:
+            duration = video.end_time - video.start_time
+        
+        duration_str = f"{duration // 60} minutes, {duration % 60} seconds"
+
+        # Append to metadata file
+        with open(tp.metadata_path, 'a') as f:
+            f.write(f"\n\nFinal Word Count: {word_count}")
+            f.write(f"\nTrimmed Video Duration: {duration_str}")
+
+        tp.status = "metadata_updated"
+        db_session.commit()
+        print(f"Updated metadata for transcript processing id: {transcript_processing_id}")
+
+    finally:
+        db_session.close()
+
+def post_process_transcripts():
+    """
+    Main function to orchestrate the post-processing of transcripts.
+    """
+    db_session = db.SessionLocal()
+    try:
+        # Find all transcripts that need processing
+        transcripts_to_process = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.status == "raw_transcript_received").all()
+        for tp in transcripts_to_process:
+            initial_cleaning(tp.id)
+
+        transcripts_to_process = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.status == "initial_cleaning_complete").all()
+        for tp in transcripts_to_process:
+            secondary_cleaning(tp.id)
+
+        transcripts_to_process = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.status == "secondary_cleaning_complete").all()
+        for tp in transcripts_to_process:
+            gen_metadata(tp.id)
+
+        transcripts_to_process = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.status == "metadata_generation_complete").all()
+        for tp in transcripts_to_process:
+            final_pass(tp.id)
+            
+    finally:
+        db_session.close()
+

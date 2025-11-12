@@ -1,6 +1,6 @@
 import sqlalchemy as sa
 from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy import Column, Integer, String, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -50,6 +50,23 @@ class Video(Base):
     error_message = Column(String)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+class TranscriptProcessing(Base):
+    __tablename__ = "transcript_processing"
+
+    id = Column(Integer, primary_key=True, index=True)
+    video_id = Column(Integer, ForeignKey("videos.id"), nullable=False)
+    raw_transcript_path = Column(String)
+    initial_cleaning_path = Column(String)
+    secondary_cleaning_path = Column(String)
+    final_pass_path = Column(String)
+    metadata_path = Column(String)
+    book_ready_path = Column(String)
+    starting_word_count = Column(Integer)
+    final_word_count = Column(Integer)
+    status = Column(String, default="raw_transcript_received")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 if __name__ == "__main__":
     Base.metadata.create_all(bind=engine)

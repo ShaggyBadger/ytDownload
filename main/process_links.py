@@ -1,8 +1,13 @@
 import yt_dlp
 import csv
+import re
 from pathlib import Path
 from db import SessionLocal, Video
 
+def extract_yt_id(url):
+    """Extracts the YouTube video ID from a URL using regex."""
+    match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11}).*", url)
+    return match.group(1) if match else None
 
 def get_video_metadata(url):
     """
@@ -22,7 +27,6 @@ def get_video_metadata(url):
         try:
             info_dict = ydl.extract_info(url, download=False)
             
-            # Create a new dictionary with only the required keys
             video_details = {
                 'yt_id': info_dict.get('id'),
                 'title': info_dict.get('title'),
@@ -40,7 +44,6 @@ def get_video_metadata(url):
             return video_details
         
         except yt_dlp.utils.DownloadError as e:
-            # Return a minimal dict on error to avoid breaking the loop
             print(f"\nError fetching metadata for {url}: {e}")
             return {}
 
@@ -57,70 +60,73 @@ def process_csv():
 
     with open(csv_path, mode='r', encoding='utf-8') as csv_file:
         reader = csv.DictReader(csv_file)
-        data_dict = [row for row in reader]
+        data_dict = list(reader)
     
     for d in data_dict:
-        url = d.get('url')
-        start_hour = int(d.get('start_hour'))
-        start_min = int(d.get('start_min'))
-        start_sec = int(d.get('start_sec'))
-        end_hour = int(d.get('end_hour'))
-        end_min = int(d.get('end_min'))
-        end_sec = int(d.get('end_sec'))
-
-        start_time = start_hour * 3600 + start_min * 60 + start_sec
-        end_time = end_hour * 3600 + end_min * 60 + end_sec
-
-        row = {
-            'url': url,
-            'start_time': start_time,
-            'end_time': end_time,
-        }
-
-        url_data.append(row)
+        try:
+            start_time = int(d.get('start_hour', 0)) * 3600 + int(d.get('start_min', 0)) * 60 + int(d.get('start_sec', 0))
+            end_time = int(d.get('end_hour', 0)) * 3600 + int(d.get('end_min', 0)) * 60 + int(d.get('end_sec', 0))
+            url_data.append({
+                'url': d.get('url'),
+                'start_time': start_time,
+                'end_time': end_time,
+            })
+        except (ValueError, TypeError) as e:
+            print(f"Skipping row due to invalid time value: {d} - Error: {e}")
     
     return url_data
 
 def process_video_links():
     print("Starting video processing...")
-    video_data = process_csv() # get the list of dicts from CSV rows
+    video_data = process_csv()
     if not video_data:
         print("No videos found in CSV file. Exiting.")
         return
 
-    print(f"Found {len(video_data)} videos to process.")
-    db = SessionLocal() # db connector
+    db = SessionLocal()
+    try:
+        existing_yt_ids = {video.yt_id for video in db.query(Video.yt_id).all()}
+        print(f"Found {len(existing_yt_ids)} existing videos in the database.")
 
-    for i, row in enumerate(video_data, 1):
-        print(f"\n--- Processing video {i} of {len(video_data)} ---")
-        url = row.get('url')
-        print(f"URL: {url}")
+        new_videos_to_process = []
+        for row in video_data:
+            url = row.get('url')
+            if not url:
+                continue
+            yt_id = extract_yt_id(url)
+            if yt_id and yt_id not in existing_yt_ids:
+                new_videos_to_process.append(row)
+            elif yt_id:
+                print(f"Skipping already existing video: {url}")
 
-        existing_video = db.query(Video).filter(Video.webpage_url == url).first()
+        if not new_videos_to_process:
+            print("No new videos to process.")
+            return
 
-        if existing_video:
-            print(f"Video '{existing_video.title}' already in database. Skipping.")
-            continue
-        else:
+        print(f"Found {len(new_videos_to_process)} new videos to process.")
+        for i, row in enumerate(new_videos_to_process, 1):
+            print(f"\n--- Processing new video {i} of {len(new_videos_to_process)} ---")
+            url = row.get('url')
+            print(f"URL: {url}")
+
             print("Fetching video metadata...")
             video_metadata = get_video_metadata(url)
-            if not video_metadata:
+            if not video_metadata or not video_metadata.get('yt_id'):
                 print("Could not fetch metadata. Skipping.")
                 continue
 
             new_video = Video(
-                **video_metadata, # Unpack the metadata dictionary
+                **video_metadata,
                 start_time=row.get('start_time'),
                 end_time=row.get('end_time'),
-                stage_1_status="completed"  # Metadata collection done
+                stage_1_status="completed"
             )
 
             db.add(new_video)
             db.commit()
+            existing_yt_ids.add(new_video.yt_id) # Add to set to avoid re-processing in same run
             print(f"Successfully added video '{new_video.title}' to the database.")
 
-
-    db.close()
+    finally:
+        db.close()
     print("\n--- Video processing complete. ---")
-
-

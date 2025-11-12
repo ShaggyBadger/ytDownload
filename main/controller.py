@@ -4,6 +4,15 @@ import db_info
 import transcribe
 import transfer_files
 import remote_db_info
+import remote_db_check
+import post_process_transcripts
+import view_transcripts
+from transfer_files import transfer_all_mp3_info_json
+from db import Base, engine
+
+# Create all tables in the database.
+# This is idempotent, so it only creates tables that don't already exist.
+Base.metadata.create_all(bind=engine)
 
 def display_menu():
     """Displays the main menu."""
@@ -13,7 +22,10 @@ def display_menu():
     print("3: Display DB Status")
     print("4: Transcribe Audio")
     print("5: Transfer files for transcription")
-    print("6: Display remote DB status")
+    print("6: Check remote DB status and fetch completed transcripts")
+    print("7: Post-process transcripts")
+    print("8: View Transcripts")
+    print("9: Transfer all MP3 info JSON to remote")
     print("q: Quit")
     print("-----------------")
 
@@ -35,7 +47,13 @@ def main():
         elif choice == '5':
             transfer_files.prepare_and_transfer_files()
         elif choice == '6':
-            remote_db_info.display_remote_db_info()
+            remote_db_check.check_remote_status_and_fetch_completed()
+        elif choice == '7':
+            post_process_transcripts.post_process_transcripts()
+        elif choice == '8':
+            view_transcripts.view_transcripts()
+        elif choice == '9':
+            transfer_files.transfer_all_mp3_info_json()
         elif choice.lower() == 'q':
             print("Exiting.")
             break
