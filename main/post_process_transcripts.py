@@ -99,41 +99,31 @@ def gen_metadata(transcript_processing_id):
     Generates metadata for the transcript, including a title.
     """
     db_session = db.SessionLocal()
+    
+    # load up the metadata prompt
+    prompt_path = Path("prompts/metadata.txt")
+    metadata_prompt = prompt_path.read_text(encoding="utf-8")
+    
     try:
         tp = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.id == transcript_processing_id).first()
         if not tp:
             print(f"No transcript processing entry found with id: {transcript_processing_id}")
             return
 
-        with open(tp.secondary_cleaning_path, 'r') as f:
-            secondary_text = f.read()
-
-        title = None
-        # Try to find title in text
-        match = re.search(r"The title of todays sermon is (.*?)[\.\n]", secondary_text, re.IGNORECASE)
-        if match:
-            title = match.group(1).strip()
-            prompt = f"Please generate the following metadata for the text below:\n\n1. A concise thesis statement.\n2. A structured outline.\n3. A brief summary.\n\n---\n\n{secondary_text}"
-        else:
-            prompt = f"Please generate the following metadata for the text below:\n\n1. A suitable title.\n2. A concise thesis statement.\n3. A structured outline.\n4. A brief summary.\n\n---\n\n{secondary_text}"
+        with open(tp.initial_cleaning_path, 'r') as f:
+            text = f.read()
 
         try:
-            generated_text = call_gemini(prompt)
+            # build full prompt
+            prompt = metadata_prompt.replace("{{SERMON_TEXT}}", text)
+            
+            # send to LLM
+            metadata_text = call_gemini(prompt)
         except RuntimeError as e:
             print(f"Error during metadata generation for transcript {tp.id}: {e}")
             tp.status = "metadata_generation_failed"
             db_session.commit()
             return
-
-        if not title:
-            # Extract title from generated text
-            title_match = re.search(r"1. Title: (.*?)[\n]", generated_text, re.IGNORECASE)
-            if title_match:
-                title = title_match.group(1).strip()
-                # Remove title from generated text
-                generated_text = re.sub(r"1. Title: .*?[\n]", "", generated_text, count=1)
-
-        metadata_text = f"Title: {title}\n\n{generated_text}"
 
         metadata_path = Path(tp.raw_transcript_path).with_suffix('.meta.txt')
         with open(metadata_path, 'w') as f:
