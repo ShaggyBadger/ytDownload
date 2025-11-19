@@ -69,17 +69,19 @@ def check_remote_status_and_fetch_completed():
                     mp3_dir = Path(video.mp3_path).parent
                     local_transcript_path = mp3_dir / Path(transcript_path).name
 
+                    # Download if it doesn't exist
                     if not local_transcript_path.exists():
                         print(f"Local transcript for video ID {video_id} not found. Redownloading...")
                         sftp_get(transcript_path, str(local_transcript_path))
                         print(f"Downloaded transcript to {local_transcript_path}")
 
-                    # Update video status
+                    made_changes = False
+                    # Update video status for stage 3 if needed
                     if video.stage_3_status != "complete":
                         video.stage_3_status = "complete"
                         video.transcript_path = str(local_transcript_path)
-                        db_session.commit()
-                        print(f"Updated local database for video ID: {video_id}")
+                        made_changes = True
+                        print(f"Updated stage 3 status for video ID: {video_id}")
 
                     # Check for and create transcript processing entry if needed
                     tp = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.video_id == video.id).first()
@@ -96,8 +98,14 @@ def check_remote_status_and_fetch_completed():
                             status="raw_transcript_received"
                         )
                         db_session.add(new_transcript_processing)
+                        
+                        # Also update stage 4 status on the video
+                        video.stage_4_status = "completed"
+                        made_changes = True
+                        print(f"Created transcript_processing entry and updated stage 4 status for video ID: {video_id}")
+
+                    if made_changes:
                         db_session.commit()
-                        print(f"Created new entry in transcript_processing for video ID: {video_id} with starting word count: {word_count}")
 
     finally:
         db_session.close()

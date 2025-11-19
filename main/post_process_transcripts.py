@@ -44,6 +44,12 @@ def initial_cleaning(transcript_processing_id):
         # Update the database
         tp.initial_cleaning_path = str(initial_cleaning_path)
         tp.status = "initial_cleaning_complete"
+        
+        # Update video table
+        video = db_session.query(db.Video).filter(db.Video.id == tp.video_id).first()
+        if video:
+            video.stage_5_status = "completed"
+
         db_session.commit()
         print(f"Initial cleaning complete for transcript processing id: {transcript_processing_id}")
 
@@ -92,7 +98,6 @@ def secondary_cleaning(transcript_processing_id):
 
     finally:
         db_session.close()
-
 
 def gen_metadata(transcript_processing_id):
     """
@@ -174,7 +179,6 @@ def final_pass(transcript_processing_id):
     finally:
         db_session.close()
 
-
 def llm_book_cleanup(transcript_processing_id):
     """
     Performs a multi-step LLM-based cleanup to make the transcript book-ready.
@@ -234,6 +238,12 @@ def llm_book_cleanup(transcript_processing_id):
 
         tp.book_ready_path = str(book_ready_path)
         tp.status = "book_ready_complete"
+
+        # Update video table
+        video = db_session.query(db.Video).filter(db.Video.id == tp.video_id).first()
+        if video:
+            video.stage_6_status = "completed"
+            
         db_session.commit()
         print(f"Book-ready cleanup complete for transcript processing id: {transcript_processing_id}")
 
@@ -280,25 +290,42 @@ def post_process_transcripts():
     """
     Main function to orchestrate the post-processing of transcripts.
     """
+    print("\n--- Starting Transcript Post-Processing ---")
     db_session = db.SessionLocal()
     try:
-        # Find all transcripts that need processing
+        # Stage 1: Initial Cleaning
+        print("\n[1/4] Looking for transcripts for initial cleaning...")
         transcripts_to_process = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.status == "raw_transcript_received").all()
+        print(f"Found {len(transcripts_to_process)} transcripts.")
         for tp in transcripts_to_process:
+            print(f"  - Processing ID: {tp.id} (Video ID: {tp.video_id})")
             initial_cleaning(tp.id)
 
-        transcripts_to_process = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.status == "initial_cleaning_complete").all()
-        for tp in transcripts_to_process:
-            secondary_cleaning(tp.id)
+        # # Stage 2: Secondary Cleaning
+        # print("\n[2/4] Looking for transcripts for secondary cleaning...")
+        # transcripts_to_process = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.status == "initial_cleaning_complete").all()
+        # print(f"Found {len(transcripts_to_process)} transcripts.")
+        # for tp in transcripts_to_process:
+        #     print(f"  - Processing ID: {tp.id} (Video ID: {tp.video_id})")
+        #     secondary_cleaning(tp.id)
 
-        transcripts_to_process = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.status == "secondary_cleaning_complete").all()
+        # Stage 3: Metadata Generation
+        print("\n[3/4] Looking for transcripts for metadata generation...")
+        transcripts_to_process = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.status == "initial_cleaning_complete").all()
+        print(f"Found {len(transcripts_to_process)} transcripts.")
         for tp in transcripts_to_process:
+            print(f"  - Processing ID: {tp.id} (Video ID: {tp.video_id})")
             gen_metadata(tp.id)
 
-        transcripts_to_process = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.status == "metadata_generation_complete").all()
-        for tp in transcripts_to_process:
-            final_pass(tp.id)
-            
+        # # Stage 4: Final Pass
+        # print("\n[4/4] Looking for transcripts for final pass...")
+        # transcripts_to_process = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.status == "metadata_generation_complete").all()
+        # print(f"Found {len(transcripts_to_process)} transcripts.")
+        # for tp in transcripts_to_process:
+        #     print(f"  - Processing ID: {tp.id} (Video ID: {tp.video_id})")
+        #     final_pass(tp.id)
+
     finally:
         db_session.close()
+    print("\n--- Transcript Post-Processing Complete ---")
 
