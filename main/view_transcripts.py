@@ -10,15 +10,18 @@ def view_transcripts():
     while True:
         db = SessionLocal()
         try:
-            transcripts = db.query(TranscriptProcessing).all()
-            if not transcripts:
+            # Join TranscriptProcessing with Video to get access to yt_id
+            results = db.query(TranscriptProcessing, Video.yt_id).join(Video, TranscriptProcessing.video_id == Video.id).all()
+            
+            if not results:
                 print("No transcripts found to display.")
                 input("Press Enter to return to the main menu...")
                 return
 
             print("\n--- Available Transcripts ---")
-            for transcript in transcripts:
-                print(f"ID: {transcript.id}, Video ID: {transcript.video_id}, Status: {transcript.status}")
+            # Unpack the tuple returned by the query
+            for transcript, yt_id in results:
+                print(f"ID: {transcript.id}, YT_ID: {yt_id}, Status: {transcript.status}")
             print("--------------------------")
 
             print("\n--- Transcript Menu ---")

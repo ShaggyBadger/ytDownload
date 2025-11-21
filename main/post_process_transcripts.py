@@ -1,6 +1,6 @@
 
 import db
-import re
+import math, re, json
 from pathlib import Path
 import subprocess
 
@@ -58,34 +58,99 @@ def initial_cleaning(transcript_processing_id):
 
 def secondary_cleaning(transcript_processing_id):
     """
-    Performs the secondary cleaning of the transcript using an LLM to add paragraph breaks.
+    Performs secondary cleaning using a sliding window approach with an LLM 
+    to add paragraph breaks and fix typos, guided by the sermon outline.
     """
     db_session = db.SessionLocal()
     try:
-        # Get the transcript_processing object
         tp = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.id == transcript_processing_id).first()
         if not tp:
             print(f"No transcript processing entry found with id: {transcript_processing_id}")
             return
 
-        # Read the initially cleaned transcript
         with open(tp.initial_cleaning_path, 'r') as f:
             initial_text = f.read()
 
-        # Create a prompt for the LLM
-        prompt = f"Please add paragraph breaks to the following text:\n\n{initial_text}"
+        # Load metadata to extract the outline
+        outline_string = ""
+        if tp.metadata_path and Path(tp.metadata_path).exists():
+            with open(tp.metadata_path, 'r') as f:
+                try:
+                    metadata = json.load(f)
+                    # Pretty-print the outline for the LLM
+                    outline = metadata.get("outline", "")
+                    if outline:
+                        outline_string = json.dumps(outline, indent=2)
+                except json.JSONDecodeError:
+                    print(f"Warning: Could not parse metadata JSON for transcript {tp.id}.")
+                    # Continue without the outline if parsing fails
+                    
+        # Load the prompt template from the external file
+        prompt_path = Path("prompts/secondary_cleaning_with_outline.txt")
+        prompt_template = prompt_path.read_text(encoding="utf-8")
 
-        # Call the LLM to add paragraph breaks
-        try:
-            cleaned_text = call_gemini(prompt)
-        except RuntimeError as e:
-            print(f"Error during secondary cleaning for transcript {tp.id}: {e}")
-            # Optionally, update the status to indicate an error
-            tp.status = "secondary_cleaning_failed"
-            db_session.commit()
+        # --- Sliding Window Logic ---
+        sentences_per_chunk = 15
+        overlap_sentences = 3
+
+        # Split the text into sentences. This regex is simple; more complex texts
+        # might benefit from a more robust library like nltk.
+        sentences = re.split(r'(?<=[.!?])\s+', initial_text.strip())
+        if not sentences:
+            print(f"No sentences found in transcript {tp.id}. Aborting.")
             return
 
-        # Write the cleaned text to a new file
+        all_edited_sentences = []
+        context_text = ""
+        
+        total_chunks = math.ceil(len(sentences) / sentences_per_chunk)
+
+        for i in range(0, len(sentences), sentences_per_chunk):
+            chunk_num = (i // sentences_per_chunk) + 1
+            print(f"Processing chunk {chunk_num}/{total_chunks} for secondary cleaning...")
+
+            # Get the next chunk of raw sentences
+            raw_chunk_sentences = sentences[i : i + sentences_per_chunk]
+            raw_chunk_text = " ".join(raw_chunk_sentences)
+
+            # Combine with context from the previous iteration
+            text_to_process = context_text + raw_chunk_text
+
+            prompt = prompt_template.replace("{{sermon_outline}}", outline_string)
+            prompt = prompt.replace("{{text_to_process}}", text_to_process)
+
+            try:
+                # Call the LLM to process the chunk with context
+                edited_chunk = call_gemini(prompt)
+
+                # Split the *edited* output back into sentences
+                edited_sentences = re.split(r'(?<=[.!?])\s+', edited_chunk.strip())
+
+                # The first part of the edited output is the processed version of our
+                # old context. We discard it to avoid duplication.
+                if context_text:
+                    num_context_sentences = len(re.split(r'(?<=[.!?])\s+', context_text.strip()))
+                    newly_edited_sentences = edited_sentences[num_context_sentences:]
+                else:
+                    newly_edited_sentences = edited_sentences
+                
+                all_edited_sentences.extend(newly_edited_sentences)
+
+                # The new context for the *next* iteration is the end of the *current* edited output.
+                context_sentences_for_next_iter = edited_sentences[-overlap_sentences:]
+                context_text = " ".join(context_sentences_for_next_iter)
+
+            except RuntimeError as e:
+                print(f"Error during secondary cleaning for transcript {tp.id}, chunk {chunk_num}: {e}")
+                tp.status = "secondary_cleaning_failed"
+                db_session.commit()
+                return
+        
+        cleaned_text = " ".join(all_edited_sentences)
+        # Post-process to fix paragraph breaks. LLMs sometimes use \n instead of \n\n.
+        cleaned_text = re.sub(r'\n+', '\n\n', cleaned_text).strip()
+
+        # Write the final text to a new file
         secondary_cleaning_path = Path(tp.raw_transcript_path).with_suffix('.secondary.txt')
         with open(secondary_cleaning_path, 'w') as f:
             f.write(cleaned_text)
@@ -298,31 +363,32 @@ def post_process_transcripts():
         transcripts_to_process = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.status == "raw_transcript_received").all()
         print(f"Found {len(transcripts_to_process)} transcripts.")
         for tp in transcripts_to_process:
-            print(f"  - Processing ID: {tp.id} (Video ID: {tp.video_id})")
+            print(f"  - Processing ID: {tp.id} for initial cleaning")
             initial_cleaning(tp.id)
 
-        # # Stage 2: Secondary Cleaning
-        # print("\n[2/4] Looking for transcripts for secondary cleaning...")
-        # transcripts_to_process = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.status == "initial_cleaning_complete").all()
-        # print(f"Found {len(transcripts_to_process)} transcripts.")
-        # for tp in transcripts_to_process:
-        #     print(f"  - Processing ID: {tp.id} (Video ID: {tp.video_id})")
-        #     secondary_cleaning(tp.id)
-
-        # Stage 3: Metadata Generation
-        print("\n[3/4] Looking for transcripts for metadata generation...")
+        # Stage 2: Metadata Generation
+        print("\n[2/4] Looking for transcripts for metadata generation...")
         transcripts_to_process = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.status == "initial_cleaning_complete").all()
         print(f"Found {len(transcripts_to_process)} transcripts.")
         for tp in transcripts_to_process:
-            print(f"  - Processing ID: {tp.id} (Video ID: {tp.video_id})")
+            print(f"  - Processing ID: {tp.id} for metadata generation")
             gen_metadata(tp.id)
+
+        # Stage 3: Secondary Cleaning
+        print("\n[3/4] Looking for transcripts for secondary cleaning...")
+        transcripts_to_process = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.status == "metadata_generation_complete").all()
+
+        print(f"Found {len(transcripts_to_process)} transcripts.")
+        for tp in transcripts_to_process:
+            print(f"  - Processing ID: {tp.id} for secondary cleaning")
+            secondary_cleaning(tp.id)
 
         # # Stage 4: Final Pass
         # print("\n[4/4] Looking for transcripts for final pass...")
         # transcripts_to_process = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.status == "metadata_generation_complete").all()
         # print(f"Found {len(transcripts_to_process)} transcripts.")
         # for tp in transcripts_to_process:
-        #     print(f"  - Processing ID: {tp.id} (Video ID: {tp.video_id})")
+        #     print(f"  - Processing ID: {tp.id}")
         #     final_pass(tp.id)
 
     finally:
