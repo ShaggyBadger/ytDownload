@@ -1,7 +1,8 @@
 import yt_dlp
-from pathlib import Path
-from pydub import AudioSegment
 from db import SessionLocal, Video
+from utils import get_video_paths
+from pydub import AudioSegment
+from pathlib import Path # Keep Path import as it's used for full_audio_path and mkdir
 
 def select_videos_to_process():
     """
@@ -50,16 +51,25 @@ def process_selected_videos(videos_to_process):
         return
 
     db = SessionLocal()
-    DOWNLOADS_DIR = Path(__file__).parent / "downloads"
-    DOWNLOADS_DIR.mkdir(exist_ok=True)
+    
+    # DOWNLOADS_DIR is now derived from get_video_paths, but we still need its base path
+    BASE_DOWNLOADS_DIR = Path(__file__).parent / "downloads"
+    BASE_DOWNLOADS_DIR.mkdir(exist_ok=True)
 
     for video in videos_to_process:
         print(f"\n--- Starting processing for: {video.title} ---")
-        video_dir = DOWNLOADS_DIR / video.yt_id
+        
+        paths = get_video_paths(video)
+        if not paths:
+            print(f"Error: Could not get paths for video {video.id} - {video.yt_id}")
+            # Consider marking video as failed or logging
+            continue
+
+        video_dir = Path(paths["video_dir"])
         video_dir.mkdir(exist_ok=True)
 
-        full_audio_path = video_dir / f"{video.yt_id}_full.mp3"
-        trimmed_audio_path = video_dir / f"{video.yt_id}_trimmed.mp3"
+        full_audio_path = video_dir / f"{video.yt_id}_full.mp3" # This is a temporary file, not stored in DB directly
+        trimmed_audio_path = Path(paths["mp3_path"])
 
         try:
             # --- HOOKS for yt-dlp ---
@@ -93,7 +103,26 @@ def process_selected_videos(videos_to_process):
                 'postprocessor_hooks': [postprocessor_hook],
             }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([video.webpage_url])
+                try:
+                    ydl.download([video.webpage_url])
+                except Exception as e:
+                    print("yt-dlp failed. Re-running with -v for full debug...")
+
+                    # Run shell-level yt-dlp debug to get full FFmpeg logs
+                    import subprocess
+                    dbg_cmd = [
+                        "yt-dlp",
+                        "-v",
+                        video.webpage_url,
+                        "-o", str(full_audio_path).replace('.mp3', '')
+                    ]
+                    dbg = subprocess.run(dbg_cmd, capture_output=True, text=True)
+                    print("\n=== YT-DLP DEBUG STDOUT ===")
+                    print(dbg.stdout)
+                    print("\n=== YT-DLP DEBUG STDERR ===")
+                    print(dbg.stderr)
+                    
+                    raise
 
             # Trim
             print("Trimming audio...")
@@ -107,8 +136,8 @@ def process_selected_videos(videos_to_process):
             db_video = db.query(Video).filter(Video.id == video.id).first()
             if db_video:
                 db_video.stage_2_status = 'completed'
-                db_video.download_path = str(full_audio_path)
-                db_video.mp3_path = str(trimmed_audio_path)
+                db_video.download_path = paths["download_path"] # Path to the video's directory
+                db_video.mp3_path = paths["mp3_path"]           # Path to the trimmed MP3
                 db.commit()
                 print(f"Successfully processed and saved to {trimmed_audio_path}")
 

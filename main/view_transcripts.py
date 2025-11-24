@@ -1,4 +1,4 @@
-from db import SessionLocal, TranscriptProcessing
+from db import SessionLocal, TranscriptProcessing, Video
 from pathlib import Path
 import os
 import post_process_transcripts
@@ -7,34 +7,55 @@ def view_transcripts():
     """
     Main function to view transcripts.
     """
-    db = SessionLocal()
-    try:
-        transcripts = db.query(TranscriptProcessing).all()
-        if not transcripts:
-            print("No transcripts found to display.")
-            return
+    while True:
+        db = SessionLocal()
+        try:
+            # Join TranscriptProcessing with Video to get access to yt_id
+            results = db.query(TranscriptProcessing, Video.yt_id).join(Video, TranscriptProcessing.video_id == Video.id).all()
+            
+            if not results:
+                print("No transcripts found to display.")
+                input("Press Enter to return to the main menu...")
+                return
 
-        print("\n--- Available Transcripts ---")
-        for transcript in transcripts:
-            print(f"ID: {transcript.id}, Video ID: {transcript.video_id}, Status: {transcript.status}")
-        print("--------------------------")
+            print("\n--- Available Transcripts ---")
+            # Unpack the tuple returned by the query
+            for transcript, yt_id in results:
+                print(f"ID: {transcript.id}, YT_ID: {yt_id}, Status: {transcript.status}")
+            print("--------------------------")
 
-        while True:
-            try:
-                choice = input("Enter the ID of the transcript to view (or 'q' to quit): ")
-                if choice.lower() == 'q':
-                    break
-                transcript_id = int(choice)
-                selected_transcript = db.query(TranscriptProcessing).filter(TranscriptProcessing.id == transcript_id).first()
-                if selected_transcript:
-                    display_transcript_files(selected_transcript)
-                    break
-                else:
-                    print("Invalid ID. Please try again.")
-            except ValueError:
-                print("Invalid input. Please enter a number.")
-    finally:
-        db.close()
+            print("\n--- Transcript Menu ---")
+            print("1: View a specific transcript")
+            print("2: Reset all transcripts")
+            print("q: Return to main menu")
+            
+            main_choice = input("Enter your choice: ")
+
+            if main_choice == '1':
+                try:
+                    choice = input("Enter the ID of the transcript to view (or 'b' to go back): ")
+                    if choice.lower() == 'b':
+                        continue
+                    transcript_id = int(choice)
+                    selected_transcript = db.query(TranscriptProcessing).filter(TranscriptProcessing.id == transcript_id).first()
+                    if selected_transcript:
+                        display_transcript_files(selected_transcript)
+                    else:
+                        print("Invalid ID. Please try again.")
+                except ValueError:
+                    print("Invalid input. Please enter a number.")
+
+            elif main_choice == '2':
+                reset_all_transcripts()
+
+            elif main_choice.lower() == 'q':
+                break
+            
+            else:
+                print("Invalid choice, please try again.")
+
+        finally:
+            db.close()
 
 def display_transcript_files(transcript):
     """
@@ -89,6 +110,31 @@ def display_transcript_files(transcript):
             print("Invalid choice. Please try again.")
 
 
+def reset_all_transcripts():
+    """
+    Deletes all processed files for all transcripts and resets their status.
+    """
+    db = SessionLocal()
+    try:
+        transcripts = db.query(TranscriptProcessing).all()
+        if not transcripts:
+            print("No transcripts to reset.")
+            return
+        
+        confirm = input(f"Are you sure you want to reset all {len(transcripts)} transcripts? This is irreversible. (y/n): ")
+        if confirm.lower() != 'y':
+            print("Reset cancelled.")
+            return
+
+        for transcript in transcripts:
+            delete_and_reset_transcript(transcript, db)
+        
+        print(f"\n--- All {len(transcripts)} transcripts have been reset. ---")
+
+    finally:
+        db.close()
+
+
 def delete_and_reset_transcript(transcript, db):
     """
     Deletes the processed files for a transcript and resets its status.
@@ -111,13 +157,23 @@ def delete_and_reset_transcript(transcript, db):
             except OSError as e:
                 print(f"Error deleting file {file_path}: {e}")
 
-    # Reset paths and status
+    # Reset paths and status on TranscriptProcessing
     transcript.book_ready_path = None
     transcript.final_pass_path = None
     transcript.metadata_path = None
     transcript.initial_cleaning_path = None
     transcript.secondary_cleaning_path = None
     transcript.status = "raw_transcript_received"
+
+    # Also reset status on the Video table
+    video = db.query(Video).filter(Video.id == transcript.video_id).first()
+    if video:
+        print(f"Resetting video status for video ID: {video.id}")
+        video.stage_4_status = "pending"
+        video.stage_5_status = "pending"
+        video.stage_6_status = "pending"
+    else:
+        print(f"Could not find matching video for transcript ID: {transcript.id}")
     
     db.commit()
     print(f"Transcript ID: {transcript.id} has been reset and is ready for reprocessing.")

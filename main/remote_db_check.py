@@ -2,13 +2,14 @@
 import json
 from pathlib import Path
 import db
+from utils import get_video_paths # <--- Added import
 from desktop_connection_utility import sftp_put, run_remote_cmd, sftp_get
 
 # Define remote paths
 REMOTE_PROJECT_DIR = "/home/alexander/pyProjects/sermonTranscriber"
 REMOTE_SCRIPT_PATH = f"{REMOTE_PROJECT_DIR}/remote_check.py"
 LOCAL_SCRIPT_PATH = Path(__file__).parent / "remote_check.py"
-LOCAL_TRANSCRIPTS_DIR = Path(__file__).parent / "transcripts"
+LOCAL_TRANSCRIPTS_DIR = Path(__file__).parent / "transcripts" # This might be deprecated soon
 
 def get_status_char(status):
     """Returns a single character representation of a status."""
@@ -60,26 +61,33 @@ def check_remote_status_and_fetch_completed():
         for remote_status in remote_statuses:
             video_id = remote_status.get("mp3_id")
             status = remote_status.get("status")
-            transcript_path = remote_status.get("transcript_path")
+            remote_transcript_path = remote_status.get("transcript_path") # Renamed for clarity
             transcript_exists = remote_status.get("transcript_exists")
 
             if status == "complete" and transcript_exists:
                 video = db_session.query(db.Video).filter(db.Video.id == video_id).first()
                 if video:
-                    mp3_dir = Path(video.mp3_path).parent
-                    local_transcript_path = mp3_dir / Path(transcript_path).name
+                    paths = get_video_paths(video) # <--- Get all paths
+                    if not paths:
+                        print(f"Error: Could not get paths for video {video.id} - {video.yt_id}")
+                        continue
 
+                    # local_transcript_path should now be the raw_transcript_path from our utils
+                    local_transcript_path = Path(paths["raw_transcript_path"])
+
+                    # Download if it doesn't exist
                     if not local_transcript_path.exists():
-                        print(f"Local transcript for video ID {video_id} not found. Redownloading...")
-                        sftp_get(transcript_path, str(local_transcript_path))
+                        print(f"Local transcript for video ID {video_id} not found. Redownloading from {remote_transcript_path}...")
+                        sftp_get(remote_transcript_path, str(local_transcript_path))
                         print(f"Downloaded transcript to {local_transcript_path}")
 
-                    # Update video status
+                    made_changes = False
+                    # Update video status for stage 3 if needed
                     if video.stage_3_status != "complete":
                         video.stage_3_status = "complete"
-                        video.transcript_path = str(local_transcript_path)
-                        db_session.commit()
-                        print(f"Updated local database for video ID: {video_id}")
+                        video.transcript_path = paths["transcript_path"] # <--- Use path from utils
+                        made_changes = True
+                        print(f"Updated stage 3 status for video ID: {video_id}")
 
                     # Check for and create transcript processing entry if needed
                     tp = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.video_id == video.id).first()
@@ -91,13 +99,19 @@ def check_remote_status_and_fetch_completed():
 
                         new_transcript_processing = db.TranscriptProcessing(
                             video_id=video.id,
-                            raw_transcript_path=str(local_transcript_path),
+                            raw_transcript_path=paths["raw_transcript_path"], # <--- Use path from utils
                             starting_word_count=word_count,
                             status="raw_transcript_received"
                         )
                         db_session.add(new_transcript_processing)
+                        
+                        # Also update stage 4 status on the video
+                        video.stage_4_status = "completed"
+                        made_changes = True
+                        print(f"Created transcript_processing entry and updated stage 4 status for video ID: {video_id}")
+
+                    if made_changes:
                         db_session.commit()
-                        print(f"Created new entry in transcript_processing for video ID: {video_id} with starting word count: {word_count}")
 
     finally:
         db_session.close()
