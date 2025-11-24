@@ -59,6 +59,7 @@ class TranscriptProcessing(Base):
     raw_transcript_path = Column(String)
     initial_cleaning_path = Column(String)
     secondary_cleaning_path = Column(String)
+    python_scrub_path = Column(String)
     final_pass_path = Column(String)
     metadata_path = Column(String)
     book_ready_path = Column(String)
