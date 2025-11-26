@@ -1,4 +1,4 @@
-from db import SessionLocal, Video
+from db import SessionLocal, Video, TranscriptProcessing
 from sqlalchemy import func
 
 def get_status_char(status):
@@ -6,6 +6,57 @@ def get_status_char(status):
     if not status:
         return ' '
     return status[0].upper()
+
+def get_post_processing_chars(tp_status):
+    """
+    Returns a 4-character string representing the status of
+    [Initial Clean|Secondary Clean|Metadata Gen|Sermon Export].
+    """
+    pp_chars = [' ', ' ', ' ', ' '] # Default to Not Started
+
+    if not tp_status:
+        return "".join(pp_chars)
+
+    # Completion states
+    if tp_status == "sermon_export_complete":
+        pp_chars = ['C', 'C', 'C', 'C']
+    elif tp_status == "metadata_generation_complete":
+        pp_chars = ['C', 'C', 'C', 'P']
+    elif tp_status == "secondary_cleaning_complete":
+        pp_chars = ['C', 'C', 'P', ' ']
+    elif tp_status == "initial_cleaning_complete":
+        pp_chars = ['C', 'P', ' ', ' ']
+    elif tp_status == "raw_transcript_received":
+        pp_chars = ['P', ' ', ' ', ' ']
+    # Failure/Quota states (these override completion if failure occurs at a later stage)
+    elif 'quota_exceeded' in tp_status:
+        if 'initial_cleaning' in tp_status:
+            pp_chars = ['Q', 'Q', 'Q', 'Q']
+        elif 'secondary_cleaning' in tp_status:
+            pp_chars = ['C', 'Q', 'Q', 'Q']
+        elif 'metadata_generation' in tp_status:
+            pp_chars = ['C', 'C', 'Q', 'Q']
+        elif 'sermon_export' in tp_status:
+            pp_chars = ['C', 'C', 'C', 'Q']
+        else: # Generic quota exceeded, mark all pending/unknown as Q
+            for i in range(4):
+                if pp_chars[i] == ' ' or pp_chars[i] == 'P': pp_chars[i] = 'Q'
+    elif '_failed' in tp_status:
+        if 'initial_cleaning' in tp_status:
+            pp_chars = ['F', 'F', 'F', 'F']
+        elif 'secondary_cleaning' in tp_status:
+            pp_chars = ['C', 'F', 'F', 'F']
+        elif 'metadata_generation' in tp_status:
+            pp_chars = ['C', 'C', 'F', 'F']
+        elif 'sermon_export' in tp_status:
+            pp_chars = ['C', 'C', 'C', 'F']
+        else: # Generic failed, mark all pending/unknown as F
+            for i in range(4):
+                if pp_chars[i] == ' ' or pp_chars[i] == 'P': pp_chars[i] = 'F'
+    else: # Unknown status
+        pp_chars = ['X', ' ', ' ', ' '] # Mark first as Unknown
+
+    return "".join(pp_chars)
 
 def display_db_info():
     """
@@ -30,16 +81,16 @@ def display_db_info():
         stage3_processing = db.query(Video).filter(Video.stage_3_status == 'processing').count()
         stage3_complete = db.query(Video).filter(Video.stage_3_status == 'complete').count()
         stage3_failed = db.query(Video).filter(Video.stage_3_status == 'failed').count()
-        stage4_pending = db.query(Video).filter(Video.stage_4_status == 'pending').count()
-        stage4_complete = db.query(Video).filter(Video.stage_4_status == 'complete').count()
-        stage4_failed = db.query(Video).filter(Video.stage_4_status == 'failed').count()
-        stage5_pending = db.query(Video).filter(Video.stage_5_status == 'pending').count()
-        stage5_complete = db.query(Video).filter(Video.stage_5_status == 'complete').count()
-        stage5_failed = db.query(Video).filter(Video.stage_5_status == 'failed').count()
-        stage6_pending = db.query(Video).filter(Video.stage_6_status == 'pending').count()
-        stage6_complete = db.query(Video).filter(Video.stage_6_status == 'complete').count()
-        stage6_failed = db.query(Video).filter(Video.stage_6_status == 'failed').count()
-
+        
+        # New post-processing stages based on TranscriptProcessing table
+        tp_raw = db.query(TranscriptProcessing).filter(TranscriptProcessing.status == 'raw_transcript_received').count()
+        tp_initial_cleaning = db.query(TranscriptProcessing).filter(TranscriptProcessing.status == 'initial_cleaning_complete').count()
+        tp_secondary_cleaning = db.query(TranscriptProcessing).filter(TranscriptProcessing.status == 'secondary_cleaning_complete').count()
+        tp_metadata_gen = db.query(TranscriptProcessing).filter(TranscriptProcessing.status == 'metadata_generation_complete').count()
+        tp_sermon_export = db.query(TranscriptProcessing).filter(TranscriptProcessing.status == 'sermon_export_complete').count()
+        tp_quota_exceeded = db.query(TranscriptProcessing).filter(TranscriptProcessing.status.like('%_quota_exceeded')).count()
+        tp_failed = db.query(TranscriptProcessing).filter(TranscriptProcessing.status.like('%_failed%')).count() - tp_quota_exceeded
+        
         print(f"\n- Stage 1 (Metadata): {stage1_complete} completed")
         print(f"- Stage 2 (MP3 Download):")
         print(f"  - {stage2_pending} pending")
@@ -50,33 +101,52 @@ def display_db_info():
         print(f"  - {stage3_processing} processing")
         print(f"  - {stage3_complete} completed")
         print(f"  - {stage3_failed} failed")
-        print(f"- Stage 4 (Transcript complete):")
-        print(f"  - {stage4_pending} pending")
-        print(f"  - {stage4_complete} completed")
-        print(f"  - {stage4_failed} failed")
-        print(f"- Stage 5 (Python text scrubbing):")
-        print(f"  - {stage5_pending} pending")
-        print(f"  - {stage5_complete} completed")
-        print(f"  - {stage5_failed} failed")
-        print(f"- Stage 6 (LLM editing):")
-        print(f"  - {stage6_pending} pending")
-        print(f"  - {stage6_complete} completed")
-        print(f"  - {stage6_failed} failed")
+        print(f"\n--- Post-Processing Stages ---")
+        print(f"  - Raw Transcript Received (ready for Initial Cleaning): {tp_raw}")
+        print(f"  - Initial Cleaning Complete (ready for Secondary Cleaning): {tp_initial_cleaning}")
+        print(f"  - Secondary Cleaning Complete (ready for Metadata Generation): {tp_secondary_cleaning}")
+        print(f"  - Metadata Generation Complete (ready for Sermon Export): {tp_metadata_gen}")
+        print(f"  - Sermon Export Complete: {tp_sermon_export}")
+        if tp_quota_exceeded > 0:
+            print(f"  - Quota Exceeded: {tp_quota_exceeded} (processing halted)")
+        if tp_failed > 0:
+            print(f"  - Failed (non-quota): {tp_failed} (review logs)")
         
-        print("\n--- Detailed Video Status ---")
-        all_videos = db.query(Video).order_by(Video.id).all()
-        for video in all_videos:
-            s1 = get_status_char(video.stage_1_status)
-            s2 = get_status_char(video.stage_2_status)
-            s3 = get_status_char(video.stage_3_status)
-            s4 = get_status_char(video.stage_4_status)
-            s5 = get_status_char(video.stage_5_status)
-            s6 = get_status_char(video.stage_6_status)
-            status_line = f"  ID: {video.id:<3} [{s1}|{s2}|{s3}|{s4}|{s5}|{s6}]"
-            print(status_line)
+        print(f"\n--- Detailed Video Status ---")
+        # --- Detailed Status Legend ---
+        print(f"Legend: C=Completed, P=Pending, F=Failed, Q=Quota Exceeded, U=Unknown/Not Applicable")
+        print(f"Video Stages: 1=Metadata, 2=MP3 Download, 3=Transcription")
+        print(f"PP Stages: 1=Initial Clean, 2=Secondary Clean, 3=Metadata Gen, 4=Sermon Export")
+        print(f"---")
+        # --- Header Row ---
+        print(f"{'ID':<4} | {'V1':^2} {'V2':^2} {'V3':^2} | {'PP1':^3} {'PP2':^3} {'PP3':^3} {'PP4':^3} | Errors")
+        print(f"-----|----------|-----------------|---------------------------------")
+
+
+        all_videos_with_tp = db.query(Video, TranscriptProcessing).outerjoin(
+            TranscriptProcessing, Video.id == TranscriptProcessing.video_id
+        ).order_by(Video.id).all()
+
+        for video, tp in all_videos_with_tp:
+            # Video stages
+            v1_char = get_status_char(video.stage_1_status)
+            v2_char = get_status_char(video.stage_2_status)
+            v3_char = get_status_char(video.stage_3_status)
+
+            # Post-processing stages
+            pp_chars_str = get_post_processing_chars(tp.status if tp else None)
+
+            # Error message snippet
+            error_snippet = ""
             if video.stage_2_status == 'failed' and video.error_message:
-                # Indent the error message to align it under the video
-                print(f"    └─ Error: {video.error_message}")
+                error_snippet += f"Video Error: {video.error_message[:30]}..."
+            if tp and ('_failed' in tp.status or 'quota_exceeded' in tp.status):
+                if error_snippet: error_snippet += " | "
+                error_snippet += f"PP Status: {tp.status}"
+            
+            # Print the line
+            print(f"{video.id:<4} | {v1_char:^2} {v2_char:^2} {v3_char:^2} | {pp_chars_str[0]:^3} {pp_chars_str[1]:^3} {pp_chars_str[2]:^3} {pp_chars_str[3]:^3} | {error_snippet}")
+                
         print("-----------------------------")
 
     finally:
