@@ -7,11 +7,15 @@ import remote_db_info
 import remote_db_check
 import post_process_transcripts
 import view_transcripts
-from transfer_files import transfer_all_mp3_info_json
+import sermon_exporter
 from db import Base, engine
+import migration
 
-# Create all tables in the database.
-# This is idempotent, so it only creates tables that don't already exist.
+# Run any pending database migrations first.
+migration.run_migration()
+
+# Create all tables in the database if they don't exist.
+# This is idempotent.
 Base.metadata.create_all(bind=engine)
 
 def display_menu():
@@ -25,7 +29,7 @@ def display_menu():
     print("6: Check remote DB status and fetch completed transcripts")
     print("7: Post-process transcripts")
     print("8: View Transcripts")
-    print("9: Transfer all MP3 info JSON to remote")
+    print("9: Generate Sermon Export Files")
     print("q: Quit")
     print("-----------------")
 
@@ -53,7 +57,7 @@ def main():
         elif choice == '8':
             view_transcripts.view_transcripts()
         elif choice == '9':
-            transfer_files.transfer_all_mp3_info_json()
+            sermon_exporter.export_sermons()
         elif choice.lower() == 'q':
             print("Exiting.")
             break
@@ -62,4 +66,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
