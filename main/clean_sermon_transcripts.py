@@ -6,7 +6,7 @@ def clean_sermon_transcripts():
     """
     Finds all 'sermon_export.txt' files and removes extra blank lines from them.
     """
-    sermon_files = glob.glob('main/downloads/**/sermon_export.txt', recursive=True)
+    sermon_files = glob.glob('downloads/**/sermon_export.txt', recursive=True)
 
     if not sermon_files:
         print("No 'sermon_export.txt' files found to clean.")
