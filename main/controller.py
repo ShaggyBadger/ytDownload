@@ -8,6 +8,7 @@ import remote_db_check
 import post_process_transcripts
 import view_transcripts
 import sermon_exporter
+import clean_sermon_transcripts
 from db import Base, engine
 import migration
 
@@ -29,7 +30,7 @@ def display_menu():
     print("6: Check remote DB status and fetch completed transcripts")
     print("7: Post-process transcripts")
     print("8: View Transcripts")
-    print("9: Generate Sermon Export Files")
+    print("9: Clean Sermon Transcripts up")
     print("q: Quit")
     print("-----------------")
 
@@ -53,11 +54,12 @@ def main():
         elif choice == '6':
             remote_db_check.check_remote_status_and_fetch_completed()
         elif choice == '7':
+
             post_process_transcripts.post_process_transcripts()
         elif choice == '8':
             view_transcripts.view_transcripts()
         elif choice == '9':
-            sermon_exporter.export_sermons()
+            clean_sermon_transcripts.clean_sermon_transcripts()
         elif choice.lower() == 'q':
             print("Exiting.")
             break

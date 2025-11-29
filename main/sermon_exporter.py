@@ -66,12 +66,15 @@ def export_single_sermon(transcript_processing_id):
         
         # 3. Read the secondary cleaned transcript
         sermon_text = secondary_transcript_path.read_text(encoding='utf-8')
+        # Apply cleaning to remove extra newlines
+        sermon_text = re.sub(r'\n{2,}', '\n', sermon_text)
         
         # 4. Create the sermon_export.txt file
         export_content = (
             f"{title}\n{sermon_date_str}\n\n"
             f"Thesis: {thesis}\n\n"
-            f"Summary:\n{summary}\n\n{sermon_text}"
+            f"Summary:\n{summary}\n\n"
+            f"Sermon:\n{sermon_text}"
         )
         export_path.write_text(export_content, encoding='utf-8')
         
