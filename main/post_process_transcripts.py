@@ -139,24 +139,32 @@ def _secondary_cleaning_logic(tp, db_session):
     # Create a prompt for the LLM
     prompt = f"Please add paragraph breaks to the following text:\n\n{initial_text}"
 
-    # Call the LLM to add paragraph breaks
-    cleaned_text = _call_gemini(prompt)
+    text_to_save = initial_text  # Default to initial text
+    max_retries = 3
 
-    # Calculate cleaned text word count
-    cleaned_word_count = len(cleaned_text.split())
+    for attempt in range(max_retries):
+        print(f"Secondary cleaning attempt {attempt + 1}/{max_retries} for transcript {tp.id}...")
+        
+        # Call the LLM to add paragraph breaks
+        cleaned_text = _call_gemini(prompt)
 
-    # Determine text to save based on word count loss
-    text_to_save = cleaned_text
-    word_loss_percentage = 0.0
+        # Calculate cleaned text word count
+        cleaned_word_count = len(cleaned_text.split())
 
-    if initial_word_count > 0: # Avoid division by zero
-        word_loss_percentage = (abs(initial_word_count - cleaned_word_count) / initial_word_count) * 100
+        # Determine word count loss
+        word_loss_percentage = 0.0
+        if initial_word_count > 0: # Avoid division by zero
+            word_loss_percentage = (abs(initial_word_count - cleaned_word_count) / initial_word_count) * 100
 
-    if word_loss_percentage > 2.0: # 2% threshold
-        print(f"Warning: Secondary cleaning resulted in a {word_loss_percentage:.2f}% word count loss for transcript {tp.id}. Falling back to initial text.")
-        text_to_save = initial_text
-    else:
-        print(f"Secondary cleaning word count change: {word_loss_percentage:.2f}% for transcript {tp.id}. Acceptable.")
+        if word_loss_percentage <= 2.0: # 2% threshold
+            print(f"Secondary cleaning word count change: {word_loss_percentage:.2f}%. Acceptable.")
+            text_to_save = cleaned_text
+            break  # Exit loop on success
+        else:
+            print(f"Warning: Attempt {attempt + 1} resulted in a {word_loss_percentage:.2f}% word count loss. Retrying...")
+
+        if attempt == max_retries - 1:
+            print(f"Warning: All {max_retries} secondary cleaning attempts resulted in high word count loss for transcript {tp.id}. Falling back to initial text.")
 
     # Write the chosen text to a new file
     secondary_cleaning_path = Path(tp.raw_transcript_path).with_suffix('.secondary.txt')
