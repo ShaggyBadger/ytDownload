@@ -40,7 +40,6 @@ def get_video_from_path(file_path: str, db_session):
         return db_session.query(Video).filter_by(id=video_id).first()
     return None
 
-
 def adjust_dir_names():
     """
     Adjusts directory names in the downloads folder to include video IDs

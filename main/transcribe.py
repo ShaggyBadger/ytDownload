@@ -73,12 +73,7 @@ def process_transcription():
         print(f"\nFound {len(videos_to_process)} videos ready for transcription.")
         print("Triggering remote processing...")
 
-        # Command to start the transcription process in the background
-        remote_cmd = (
-            f"cd {REMOTE_PROJECT_DIR}/main && "
-            f"source ../venvFiles39/bin/activate && "
-            f"nohup python3 controller.py > ../controller.log 2>&1 &"
-        )
+        remote_cmd = f"cd {REMOTE_PROJECT_DIR} && bash beginTranscription.sh"
         print(f"Running remote command: {remote_cmd}")
         run_remote_cmd(remote_cmd)
 

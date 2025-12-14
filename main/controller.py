@@ -25,8 +25,8 @@ def display_menu():
     print("1: Process video links into the database")
     print("2: Download and Trim MP3s")
     print("3: Display DB Status")
-    print("4: Transcribe Audio")
-    print("5: Transfer files for transcription")
+    print("4: Transfer files for transcription")
+    print("5: Transcribe Audio")
     print("6: Check remote DB status and fetch completed transcripts")
     print("7: Post-process transcripts")
     print("8: View Transcripts")
@@ -48,9 +48,9 @@ def main():
         elif choice == '3':
             db_info.display_db_info()
         elif choice == '4':
-            transcribe.process_transcription()
-        elif choice == '5':
             transfer_files.prepare_and_transfer_files()
+        elif choice == '5':
+            transcribe.process_transcription()
         elif choice == '6':
             remote_db_check.check_remote_status_and_fetch_completed()
         elif choice == '7':
