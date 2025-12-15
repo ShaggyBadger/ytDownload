@@ -54,7 +54,6 @@ def main():
         elif choice == '6':
             remote_db_check.check_remote_status_and_fetch_completed()
         elif choice == '7':
-
             post_process_transcripts.post_process_transcripts()
         elif choice == '8':
             view_transcripts.view_transcripts()
