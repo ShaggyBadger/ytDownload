@@ -1,5 +1,5 @@
 import db
-import math, re, json
+import math, re, json, concurrent.futures
 from pathlib import Path
 import subprocess
 from sqlalchemy import or_
@@ -191,38 +191,50 @@ def secondary_cleaning(transcript_processing_id, current_index=None, total_count
 
 def _gen_metadata_logic(tp, db_session):
     """
-    Logic for the metadata generation stage.
+    Logic for the metadata generation stage, using threading for parallel API calls.
     """
     with open(tp.secondary_cleaning_path, 'r') as f:
         text_for_metadata = f.read()
 
     metadata = {}
 
-    # 1. Get Title
+    # 1. Get Title (sequentially, as it's a single call with custom logic)
     title = None
     match = re.search(r"The title of todays sermon is (.*?)[\.\n]", text_for_metadata, re.IGNORECASE)
     if match:
         title = match.group(1).strip()
     else:
+        print("Generating 'title'...")
         prompt = f"Please provide a single, concise, and suitable title for the following text. Do not include any introductory phrases or bullet points. Just the title itself.\n\n---\n\n{text_for_metadata}"
         title = _call_gemini(prompt)
     metadata['title'] = title
 
-    # 2. Get other metadata fields
+    # 2. Get other metadata fields in parallel
     fields_to_generate = {
         "thesis": "a concise thesis statement",
         "outline": "a structured outline",
         "summary": "a brief summary"
     }
 
-    for field, description in fields_to_generate.items():
+    # Helper function to be executed in each thread
+    def _generate_field(field, description):
         print(f"Generating '{field}'...")
         prompt = f"Please generate {description} for the following text:\n\n---\n\n{text_for_metadata}"
         try:
-            metadata[field] = _call_gemini(prompt)
+            result = _call_gemini(prompt)
+            return field, result
         except RuntimeError as e:
             print(f"Error generating '{field}': {e}")
-            metadata[field] = f"Error generating '{field}'."
+            return field, f"Error generating '{field}'."
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(fields_to_generate)) as executor:
+        # Submit all tasks to the thread pool
+        future_to_field = {executor.submit(_generate_field, field, desc): field for field, desc in fields_to_generate.items()}
+
+        # Process results as they complete
+        for future in concurrent.futures.as_completed(future_to_field):
+            field, result = future.result()
+            metadata[field] = result
 
     # 3. Write to file as JSON
     metadata_path = Path(tp.raw_transcript_path).with_suffix('.meta.txt')
