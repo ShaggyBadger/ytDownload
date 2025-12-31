@@ -3,6 +3,10 @@ import csv
 import re
 from pathlib import Path
 from db import SessionLocal, Video
+import logging
+
+# Setup module-level logger
+logger = logging.getLogger(__name__)
 
 def extract_yt_id(url):
     """Extracts the YouTube video ID from a URL using regex."""
@@ -44,7 +48,7 @@ def get_video_metadata(url):
             return video_details
         
         except yt_dlp.utils.DownloadError as e:
-            print(f"\nError fetching metadata for {url}: {e}")
+            logger.error(f"Error fetching metadata for {url}: {e}")
             return {}
 
 def process_csv():
@@ -55,7 +59,7 @@ def process_csv():
 
     csv_path = Path(__file__).parent / 'video_urls.csv'
     if not csv_path.exists():
-        print(f"CSV file not found at {csv_path}")
+        logger.error(f"CSV file not found at {csv_path}")
         return []
 
     with open(csv_path, mode='r', encoding='utf-8') as csv_file:
@@ -72,21 +76,21 @@ def process_csv():
                 'end_time': end_time,
             })
         except (ValueError, TypeError) as e:
-            print(f"Skipping row due to invalid time value: {d} - Error: {e}")
+            logger.warning(f"Skipping row due to invalid time value: {d} - Error: {e}")
     
     return url_data
 
 def process_video_links():
-    print("Starting video processing...")
+    logger.info("Starting video processing...")
     video_data = process_csv()
     if not video_data:
-        print("No videos found in CSV file. Exiting.")
+        logger.warning("No videos found in CSV file. Exiting.")
         return
 
     db = SessionLocal()
     try:
         existing_yt_ids = {video.yt_id for video in db.query(Video.yt_id).all()}
-        print(f"Found {len(existing_yt_ids)} existing videos in the database.")
+        logger.info(f"Found {len(existing_yt_ids)} existing videos in the database.")
 
         new_videos_to_process = []
         for row in video_data:
@@ -97,22 +101,22 @@ def process_video_links():
             if yt_id and yt_id not in existing_yt_ids:
                 new_videos_to_process.append(row)
             elif yt_id:
-                print(f"Skipping already existing video: {url}")
+                logger.info(f"Skipping already existing video: {url}")
 
         if not new_videos_to_process:
-            print("No new videos to process.")
+            logger.info("No new videos to process.")
             return
 
-        print(f"Found {len(new_videos_to_process)} new videos to process.")
+        logger.info(f"Found {len(new_videos_to_process)} new videos to process.")
         for i, row in enumerate(new_videos_to_process, 1):
-            print(f"\n--- Processing new video {i} of {len(new_videos_to_process)} ---")
+            logger.info(f"--- Processing new video {i} of {len(new_videos_to_process)} ---")
             url = row.get('url')
-            print(f"URL: {url}")
+            logger.info(f"URL: {url}")
 
-            print("Fetching video metadata...")
+            logger.info("Fetching video metadata...")
             video_metadata = get_video_metadata(url)
             if not video_metadata or not video_metadata.get('yt_id'):
-                print("Could not fetch metadata. Skipping.")
+                logger.warning("Could not fetch metadata. Skipping.")
                 continue
 
             new_video = Video(
@@ -125,8 +129,8 @@ def process_video_links():
             db.add(new_video)
             db.commit()
             existing_yt_ids.add(new_video.yt_id) # Add to set to avoid re-processing in same run
-            print(f"Successfully added video '{new_video.title}' to the database.")
+            logger.info(f"Successfully added video '{new_video.title}' to the database.")
 
     finally:
         db.close()
-    print("\n--- Video processing complete. ---")
+    logger.info("--- Video processing complete. ---")

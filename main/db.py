@@ -1,5 +1,5 @@
 import sqlalchemy as sa
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey
 from datetime import datetime, timezone
 from pathlib import Path
@@ -68,6 +68,18 @@ class TranscriptProcessing(Base):
     status = Column(String, default="raw_transcript_received")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+class JobDeployment(Base):
+    __tablename__ = "job_deployment"
+
+    id = Column(Integer, primary_key=True, index=True)
+    video_id = Column(Integer, ForeignKey("videos.id"), nullable=False)
+    ulid = Column(String, unique=True, nullable=False)
+    job_status = Column(String, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # Relationship to Video
+    video = relationship("Video", backref="job_deployments")
 
 if __name__ == "__main__":
     Base.metadata.create_all(bind=engine)

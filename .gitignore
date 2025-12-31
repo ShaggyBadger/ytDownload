@@ -11,3 +11,4 @@ GEMINI.md
 __pycache__/
 *.pyc
 *.csv
+*.log

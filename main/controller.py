@@ -1,7 +1,6 @@
 import process_links
 import fetch_mp3
 import db_info
-import transcribe
 import transfer_files
 import remote_db_info
 import remote_db_check
@@ -11,6 +10,10 @@ import sermon_exporter
 import clean_sermon_transcripts
 from db import Base, engine
 import migration
+import logger_config
+
+# Setup logging
+logger_config.setup_logging()
 
 # Run any pending database migrations first.
 migration.run_migration()
@@ -25,12 +28,11 @@ def display_menu():
     print("1: Process video links into the database")
     print("2: Download and Trim MP3s")
     print("3: Display DB Status")
-    print("4: Transfer files for transcription")
-    print("5: Transcribe Audio")
-    print("6: Check remote DB status and fetch completed transcripts")
-    print("7: Post-process transcripts")
-    print("8: View Transcripts")
-    print("9: Clean Sermon Transcripts up")
+    print("4: Deploy Transcription Jobs")
+    print("5: Check remote DB status and fetch completed transcripts")
+    print("6: Post-process transcripts")
+    print("7: View Transcripts")
+    print("8: Clean Sermon Transcripts up")
     print("q: Quit")
     print("-----------------")
 
@@ -50,14 +52,12 @@ def main():
         elif choice == '4':
             transfer_files.prepare_and_transfer_files()
         elif choice == '5':
-            transcribe.process_transcription()
-        elif choice == '6':
             remote_db_check.check_remote_status_and_fetch_completed()
-        elif choice == '7':
+        elif choice == '6':
             post_process_transcripts.post_process_transcripts()
-        elif choice == '8':
+        elif choice == '7':
             view_transcripts.view_transcripts()
-        elif choice == '9':
+        elif choice == '8':
             clean_sermon_transcripts.clean_sermon_transcripts()
         elif choice.lower() == 'q':
             print("Exiting.")
