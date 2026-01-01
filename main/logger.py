@@ -8,7 +8,7 @@ if not os.path.exists('logs'):
 
 def setup_logger(name):
     logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
 
     # Create handlers
     stream_handler = logging.StreamHandler()
