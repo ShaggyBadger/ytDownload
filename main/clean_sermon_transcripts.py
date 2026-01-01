@@ -1,6 +1,9 @@
 import glob
 import os
 import re
+from logger import setup_logger
+
+logger = setup_logger(__name__)
 
 def clean_sermon_transcripts():
     """
@@ -9,10 +12,10 @@ def clean_sermon_transcripts():
     sermon_files = glob.glob('downloads/**/sermon_export.txt', recursive=True)
 
     if not sermon_files:
-        print("No 'sermon_export.txt' files found to clean.")
+        logger.info("No 'sermon_export.txt' files found to clean.")
         return
 
-    print(f"Found {len(sermon_files)} sermon export files to clean.")
+    logger.info(f"Found {len(sermon_files)} sermon export files to clean.")
 
     for file_path in sermon_files:
         try:
@@ -25,12 +28,12 @@ def clean_sermon_transcripts():
             if content != cleaned_content:
                 with open(file_path, 'w', encoding='utf-8') as f:
                     f.write(cleaned_content)
-                print(f"Cleaned: {file_path}")
+                logger.info(f"Cleaned: {file_path}")
             else:
-                print(f"Already clean: {file_path}")
+                logger.info(f"Already clean: {file_path}")
 
         except Exception as e:
-            print(f"Error processing {file_path}: {e}")
+            logger.error(f"Error processing {file_path}: {e}")
 
 if __name__ == '__main__':
     clean_sermon_transcripts()

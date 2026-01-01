@@ -11,6 +11,9 @@ import sermon_exporter
 import clean_sermon_transcripts
 from db import Base, engine
 import migration
+from logger import setup_logger
+
+logger = setup_logger(__name__)
 
 # Run any pending database migrations first.
 migration.run_migration()
@@ -21,24 +24,25 @@ Base.metadata.create_all(bind=engine)
 
 def display_menu():
     """Displays the main menu."""
-    print("\n--- Main Menu ---")
-    print("1: Process video links into the database")
-    print("2: Download and Trim MP3s")
-    print("3: Display DB Status")
-    print("4: Transfer files for transcription")
-    print("5: Transcribe Audio")
-    print("6: Check remote DB status and fetch completed transcripts")
-    print("7: Post-process transcripts")
-    print("8: View Transcripts")
-    print("9: Clean Sermon Transcripts up")
-    print("q: Quit")
-    print("-----------------")
+    logger.info("\n--- Main Menu ---\n"
+          "1: Process video links into the database\n"
+          "2: Download and Trim MP3s\n"
+          "3: Display DB Status\n"
+          "4: Transfer files for transcription\n"
+          "5: Transcribe Audio\n"
+          "6: Check remote DB status and fetch completed transcripts\n"
+          "7: Post-process transcripts\n"
+          "8: View Transcripts\n"
+          "9: Clean Sermon Transcripts up\n"
+          "q: Quit\n"
+          "-----------------")
 
 def main():
     """Main function to run the controller."""
     while True:
         display_menu()
         choice = input("Enter your choice: ")
+        logger.info(f"User choice: {choice}")
 
         if choice == '1':
             process_links.process_video_links()
@@ -60,10 +64,10 @@ def main():
         elif choice == '9':
             clean_sermon_transcripts.clean_sermon_transcripts()
         elif choice.lower() == 'q':
-            print("Exiting.")
+            logger.info("Exiting.")
             break
         else:
-            print("Invalid choice. Please try again.")
+            logger.warning("Invalid choice. Please try again.")
 
 if __name__ == '__main__':
     main()

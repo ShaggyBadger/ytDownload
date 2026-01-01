@@ -1,5 +1,8 @@
 from db import SessionLocal, Video, TranscriptProcessing
 from sqlalchemy import func
+from logger import setup_logger
+
+logger = setup_logger(__name__)
 
 def get_status_char(status):
     """Returns a single character representation of a status."""
@@ -66,11 +69,11 @@ def display_db_info():
     try:
         total_videos = db.query(Video).count()
         if total_videos == 0:
-            print("\nThe database is currently empty.")
+            logger.info("The database is currently empty.")
             return
 
-        print(f"\n--- Database Status Summary ---")
-        print(f"Total videos in database: {total_videos}")
+        logger.info("--- Database Status Summary ---")
+        logger.info(f"Total videos in database: {total_videos}")
 
         # Count videos at different stages
         stage1_complete = db.query(Video).filter(Video.stage_1_status == 'completed').count()
@@ -91,36 +94,36 @@ def display_db_info():
         tp_quota_exceeded = db.query(TranscriptProcessing).filter(TranscriptProcessing.status.like('%_quota_exceeded')).count()
         tp_failed = db.query(TranscriptProcessing).filter(TranscriptProcessing.status.like('%_failed%')).count() - tp_quota_exceeded
         
-        print(f"\n- Stage 1 (Metadata): {stage1_complete} completed")
-        print(f"- Stage 2 (MP3 Download):")
-        print(f"  - {stage2_pending} pending")
-        print(f"  - {stage2_complete} completed")
-        print(f"  - {stage2_failed} failed")
-        print(f"- Stage 3 (Transcription):")
-        print(f"  - {stage3_pending} pending")
-        print(f"  - {stage3_processing} processing")
-        print(f"  - {stage3_complete} completed")
-        print(f"  - {stage3_failed} failed")
-        print(f"\n--- Post-Processing Stages ---")
-        print(f"  - Raw Transcript Received (ready for Initial Cleaning): {tp_raw}")
-        print(f"  - Initial Cleaning Complete (ready for Secondary Cleaning): {tp_initial_cleaning}")
-        print(f"  - Secondary Cleaning Complete (ready for Metadata Generation): {tp_secondary_cleaning}")
-        print(f"  - Metadata Generation Complete (ready for Sermon Export): {tp_metadata_gen}")
-        print(f"  - Sermon Export Complete: {tp_sermon_export}")
+        logger.info(f"- Stage 1 (Metadata): {stage1_complete} completed")
+        logger.info("- Stage 2 (MP3 Download):")
+        logger.info(f"  - {stage2_pending} pending")
+        logger.info(f"  - {stage2_complete} completed")
+        logger.info(f"  - {stage2_failed} failed")
+        logger.info("- Stage 3 (Transcription):")
+        logger.info(f"  - {stage3_pending} pending")
+        logger.info(f"  - {stage3_processing} processing")
+        logger.info(f"  - {stage3_complete} completed")
+        logger.info(f"  - {stage3_failed} failed")
+        logger.info("--- Post-Processing Stages ---")
+        logger.info(f"  - Raw Transcript Received (ready for Initial Cleaning): {tp_raw}")
+        logger.info(f"  - Initial Cleaning Complete (ready for Secondary Cleaning): {tp_initial_cleaning}")
+        logger.info(f"  - Secondary Cleaning Complete (ready for Metadata Generation): {tp_secondary_cleaning}")
+        logger.info(f"  - Metadata Generation Complete (ready for Sermon Export): {tp_metadata_gen}")
+        logger.info(f"  - Sermon Export Complete: {tp_sermon_export}")
         if tp_quota_exceeded > 0:
-            print(f"  - Quota Exceeded: {tp_quota_exceeded} (processing halted)")
+            logger.info(f"  - Quota Exceeded: {tp_quota_exceeded} (processing halted)")
         if tp_failed > 0:
-            print(f"  - Failed (non-quota): {tp_failed} (review logs)")
+            logger.info(f"  - Failed (non-quota): {tp_failed} (review logs)")
         
-        print(f"\n--- Detailed Video Status ---")
+        logger.info("--- Detailed Video Status ---")
         # --- Detailed Status Legend ---
-        print(f"Legend: C=Completed, P=Pending, F=Failed, Q=Quota Exceeded, U=Unknown/Not Applicable")
-        print(f"Video Stages: 1=Metadata, 2=MP3 Download, 3=Transcription")
-        print(f"PP Stages: 1=Initial Clean, 2=Secondary Clean, 3=Metadata Gen, 4=Sermon Export")
-        print(f"---")
+        logger.info("Legend: C=Completed, P=Pending, F=Failed, Q=Quota Exceeded, U=Unknown/Not Applicable")
+        logger.info("Video Stages: 1=Metadata, 2=MP3 Download, 3=Transcription")
+        logger.info("PP Stages: 1=Initial Clean, 2=Secondary Clean, 3=Metadata Gen, 4=Sermon Export")
+        logger.info("---")
         # --- Header Row ---
-        print(f"{'ID':<4} | {'V1':^2} {'V2':^2} {'V3':^2} | {'PP1':^3} {'PP2':^3} {'PP3':^3} {'PP4':^3} | Errors")
-        print(f"-----|----------|-----------------|---------------------------------")
+        logger.info(f"{'ID':<4} | {'V1':^2} {'V2':^2} {'V3':^2} | {'PP1':^3} {'PP2':^3} {'PP3':^3} {'PP4':^3} | Errors")
+        logger.info("-----|----------|-----------------|---------------------------------")
 
 
         all_videos_with_tp = db.query(Video, TranscriptProcessing).outerjoin(
@@ -145,9 +148,9 @@ def display_db_info():
                 error_snippet += f"PP Status: {tp.status}"
             
             # Print the line
-            print(f"{video.id:<4} | {v1_char:^2} {v2_char:^2} {v3_char:^2} | {pp_chars_str[0]:^3} {pp_chars_str[1]:^3} {pp_chars_str[2]:^3} {pp_chars_str[3]:^3} | {error_snippet}")
+            logger.info(f"{video.id:<4} | {v1_char:^2} {v2_char:^2} {v3_char:^2} | {pp_chars_str[0]:^3} {pp_chars_str[1]:^3} {pp_chars_str[2]:^3} {pp_chars_str[3]:^3} | {error_snippet}")
                 
-        print("-----------------------------")
+        logger.info("-----------------------------")
 
     finally:
         db.close()

@@ -2,6 +2,9 @@ from db import SessionLocal, TranscriptProcessing, Video
 from pathlib import Path
 import os
 import post_process_transcripts
+from logger import setup_logger
+
+logger = setup_logger(__name__)
 
 def view_transcripts():
     """
@@ -14,22 +17,23 @@ def view_transcripts():
             results = db.query(TranscriptProcessing, Video.yt_id).join(Video, TranscriptProcessing.video_id == Video.id).all()
             
             if not results:
-                print("No transcripts found to display.")
+                logger.info("No transcripts found to display.")
                 input("Press Enter to return to the main menu...")
                 return
 
-            print("\n--- Available Transcripts ---")
+            logger.info("--- Available Transcripts ---")
             # Unpack the tuple returned by the query
             for transcript, yt_id in results:
-                print(f"ID: {transcript.id}, YT_ID: {yt_id}, Status: {transcript.status}")
-            print("--------------------------")
+                logger.info(f"ID: {transcript.id}, YT_ID: {yt_id}, Status: {transcript.status}")
+            logger.info("--------------------------")
 
-            print("\n--- Transcript Menu ---")
-            print("1: View a specific transcript")
-            print("2: Reset all transcripts")
-            print("q: Return to main menu")
+            logger.info("--- Transcript Menu ---")
+            logger.info("1: View a specific transcript")
+            logger.info("2: Reset all transcripts")
+            logger.info("q: Return to main menu")
             
             main_choice = input("Enter your choice: ")
+            logger.info(f"User choice: {main_choice}")
 
             if main_choice == '1':
                 try:
@@ -41,9 +45,9 @@ def view_transcripts():
                     if selected_transcript:
                         display_transcript_files(selected_transcript)
                     else:
-                        print("Invalid ID. Please try again.")
+                        logger.warning("Invalid ID. Please try again.")
                 except ValueError:
-                    print("Invalid input. Please enter a number.")
+                    logger.warning("Invalid input. Please enter a number.")
 
             elif main_choice == '2':
                 reset_all_transcripts()
@@ -52,7 +56,7 @@ def view_transcripts():
                 break
             
             else:
-                print("Invalid choice, please try again.")
+                logger.warning("Invalid choice, please try again.")
 
         finally:
             db.close()
@@ -61,7 +65,7 @@ def display_transcript_files(transcript):
     """
     Displays the content of the transcript files.
     """
-    print(f"\n--- Displaying files for Transcript ID: {transcript.id} ---")
+    logger.info(f"--- Displaying files for Transcript ID: {transcript.id} ---")
 
     file_paths = {
         "Metadata": transcript.metadata_path,
@@ -70,27 +74,28 @@ def display_transcript_files(transcript):
     }
 
     for name, file_path in file_paths.items():
-        print(f"\n--- {name} ---")
+        logger.info(f"--- {name} ---")
         if file_path and Path(file_path).exists():
             with open(file_path, 'r', encoding='utf-8') as f:
-                print(f.read())
+                logger.info(f.read())
         else:
-            print(f"File not found or path not set for {name}.")
-        print("--------------------")
+            logger.info(f"File not found or path not set for {name}.")
+        logger.info("--------------------")
         input("Press Enter to continue...")
 
     while True:
-        print("\nWhat would you like to do?")
-        print("1: Run the book cleanup process")
-        print("2: Delete and reset this transcript")
-        print("q: Quit")
+        logger.info("What would you like to do?")
+        logger.info("1: Run the book cleanup process")
+        logger.info("2: Delete and reset this transcript")
+        logger.info("q: Quit")
         choice = input("Enter your choice: ")
+        logger.info(f"User choice: {choice}")
 
         if choice == '1':
-            print("\n--- Running book cleanup process ---")
+            logger.info("--- Running book cleanup process ---")
             post_process_transcripts.llm_book_cleanup(transcript.id)
             post_process_transcripts.update_metadata_file(transcript.id)
-            print("--- Book cleanup process complete ---")
+            logger.info("--- Book cleanup process complete ---")
             break
         elif choice == '2':
             db = SessionLocal()
@@ -100,14 +105,14 @@ def display_transcript_files(transcript):
                 if transcript_to_delete:
                     delete_and_reset_transcript(transcript_to_delete, db)
                 else:
-                    print(f"Could not find transcript with ID: {transcript.id} to delete.")
+                    logger.error(f"Could not find transcript with ID: {transcript.id} to delete.")
             finally:
                 db.close()
             break
         elif choice.lower() == 'q':
             break
         else:
-            print("Invalid choice. Please try again.")
+            logger.warning("Invalid choice. Please try again.")
 
 
 def reset_all_transcripts():
@@ -118,18 +123,18 @@ def reset_all_transcripts():
     try:
         transcripts = db.query(TranscriptProcessing).all()
         if not transcripts:
-            print("No transcripts to reset.")
+            logger.info("No transcripts to reset.")
             return
         
         confirm = input(f"Are you sure you want to reset all {len(transcripts)} transcripts? This is irreversible. (y/n): ")
         if confirm.lower() != 'y':
-            print("Reset cancelled.")
+            logger.info("Reset cancelled.")
             return
 
         for transcript in transcripts:
             delete_and_reset_transcript(transcript, db)
         
-        print(f"\n--- All {len(transcripts)} transcripts have been reset. ---")
+        logger.info(f"--- All {len(transcripts)} transcripts have been reset. ---")
 
     finally:
         db.close()
@@ -139,7 +144,7 @@ def delete_and_reset_transcript(transcript, db):
     """
     Deletes the processed files for a transcript and resets its status.
     """
-    print(f"\n--- Resetting transcript ID: {transcript.id} ---")
+    logger.info(f"--- Resetting transcript ID: {transcript.id} ---")
 
     files_to_delete = [
         transcript.book_ready_path,
@@ -153,9 +158,9 @@ def delete_and_reset_transcript(transcript, db):
         if file_path and Path(file_path).exists():
             try:
                 os.remove(file_path)
-                print(f"Deleted file: {file_path}")
+                logger.info(f"Deleted file: {file_path}")
             except OSError as e:
-                print(f"Error deleting file {file_path}: {e}")
+                logger.error(f"Error deleting file {file_path}: {e}")
 
     # Reset paths and status on TranscriptProcessing
     transcript.book_ready_path = None
@@ -168,12 +173,12 @@ def delete_and_reset_transcript(transcript, db):
     # Also reset status on the Video table
     video = db.query(Video).filter(Video.id == transcript.video_id).first()
     if video:
-        print(f"Resetting video status for video ID: {video.id}")
+        logger.info(f"Resetting video status for video ID: {video.id}")
         video.stage_4_status = "pending"
         video.stage_5_status = "pending"
         video.stage_6_status = "pending"
     else:
-        print(f"Could not find matching video for transcript ID: {transcript.id}")
+        logger.error(f"Could not find matching video for transcript ID: {transcript.id}")
     
     db.commit()
-    print(f"Transcript ID: {transcript.id} has been reset and is ready for reprocessing.")
+    logger.info(f"Transcript ID: {transcript.id} has been reset and is ready for reprocessing.")

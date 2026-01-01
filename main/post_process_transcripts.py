@@ -3,7 +3,10 @@ import math, re, json, concurrent.futures
 from pathlib import Path
 import subprocess
 from sqlalchemy import or_
-from utils import get_video_paths # <--- Added import
+from utils import get_video_paths
+from logger import setup_logger
+
+logger = setup_logger(__name__)
 
 # --- Custom Exceptions ---
 class GeminiQuotaExceededError(Exception):
@@ -52,14 +55,14 @@ def _execute_processing_stage(transcript_processing_id, stage_logic_func, succes
     try:
         tp = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.id == transcript_processing_id).first()
         if not tp:
-            print(f"No transcript processing entry found with id: {transcript_processing_id}")
+            logger.error(f"No transcript processing entry found with id: {transcript_processing_id}")
             return
 
         progress_str = ""
         if current_index is not None and total_count is not None:
             progress_str = f" ({current_index}/{total_count})"
         
-        print(f"Beginning {stage_name} for transcript {tp.id}{progress_str}...")
+        logger.info(f"Beginning {stage_name} for transcript {tp.id}{progress_str}...")
 
         # Execute the specific logic for this stage
         stage_logic_func(tp, db_session)
@@ -67,10 +70,10 @@ def _execute_processing_stage(transcript_processing_id, stage_logic_func, succes
         # Update status and commit
         tp.status = success_status
         db_session.commit()
-        print(f"{stage_name} complete for transcript: {tp.id}")
+        logger.info(f"{stage_name} complete for transcript: {tp.id}")
 
     except GeminiQuotaExceededError as e:
-        print(f"!!! CRITICAL: Gemini API quota hit during {stage_name} for transcript {transcript_processing_id}. Stopping further LLM processing. Error: {e}")
+        logger.critical(f"!!! CRITICAL: Gemini API quota hit during {stage_name} for transcript {transcript_processing_id}. Stopping further LLM processing. Error: {e}")
         if stop_processing_flag is not None:
             stop_processing_flag[0] = True
         if db_session.is_active:
@@ -81,7 +84,7 @@ def _execute_processing_stage(transcript_processing_id, stage_logic_func, succes
         # Re-raise to stop current transcript's processing
         raise RuntimeError(f"Processing halted due to Gemini API quota.") from e
     except Exception as e:
-        print(f"Error during {stage_name} for transcript {transcript_processing_id}: {e}")
+        logger.error(f"Error during {stage_name} for transcript {transcript_processing_id}: {e}")
         if db_session.is_active:
             db_session.rollback()
         if tp:
@@ -143,7 +146,7 @@ def _secondary_cleaning_logic(tp, db_session):
     max_retries = 3
 
     for attempt in range(max_retries):
-        print(f"Secondary cleaning attempt {attempt + 1}/{max_retries} for transcript {tp.id}...")
+        logger.info(f"Secondary cleaning attempt {attempt + 1}/{max_retries} for transcript {tp.id}...")
         
         # Call the LLM to add paragraph breaks
         cleaned_text = _call_gemini(prompt)
@@ -157,14 +160,14 @@ def _secondary_cleaning_logic(tp, db_session):
             word_loss_percentage = (abs(initial_word_count - cleaned_word_count) / initial_word_count) * 100
 
         if word_loss_percentage <= 2.0: # 2% threshold
-            print(f"Secondary cleaning word count change: {word_loss_percentage:.2f}%. Acceptable.")
+            logger.info(f"Secondary cleaning word count change: {word_loss_percentage:.2f}%. Acceptable.")
             text_to_save = cleaned_text
             break  # Exit loop on success
         else:
-            print(f"Warning: Attempt {attempt + 1} resulted in a {word_loss_percentage:.2f}% word count loss. Retrying...")
+            logger.warning(f"Warning: Attempt {attempt + 1} resulted in a {word_loss_percentage:.2f}% word count loss. Retrying...")
 
         if attempt == max_retries - 1:
-            print(f"Warning: All {max_retries} secondary cleaning attempts resulted in high word count loss for transcript {tp.id}. Falling back to initial text.")
+            logger.warning(f"Warning: All {max_retries} secondary cleaning attempts resulted in high word count loss for transcript {tp.id}. Falling back to initial text.")
 
     # Write the chosen text to a new file
     secondary_cleaning_path = Path(tp.raw_transcript_path).with_suffix('.secondary.txt')
@@ -204,7 +207,7 @@ def _gen_metadata_logic(tp, db_session):
     if match:
         title = match.group(1).strip()
     else:
-        print("Generating 'title'...")
+        logger.info("Generating 'title'...")
         prompt = f"Please provide a single, concise, and suitable title for the following text. Do not include any introductory phrases or bullet points. Just the title itself.\n\n---\n\n{text_for_metadata}"
         title = _call_gemini(prompt)
     metadata['title'] = title
@@ -218,13 +221,13 @@ def _gen_metadata_logic(tp, db_session):
 
     # Helper function to be executed in each thread
     def _generate_field(field, description):
-        print(f"Generating '{field}'...")
+        logger.info(f"Generating '{field}'...")
         prompt = f"Please generate {description} for the following text:\n\n---\n\n{text_for_metadata}"
         try:
             result = _call_gemini(prompt)
             return field, result
         except RuntimeError as e:
-            print(f"Error generating '{field}': {e}")
+            logger.error(f"Error generating '{field}': {e}")
             return field, f"Error generating '{field}'."
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(fields_to_generate)) as executor:
@@ -343,7 +346,7 @@ def _llm_book_cleanup_logic(tp, db_session):
 
     cleaned_chunks = []
     for i, chunk in enumerate(chunks):
-        print(f"Processing chunk {i+1}/{len(chunks)}...")
+        logger.info(f"Processing chunk {i+1}/{len(chunks)}...")
         try:
             # 2a. Disfluency Removal
             prompt_disfluency = f"Please remove filler words like 'um', 'ah', and 'you know' from the following text:\n\n{chunk}"
@@ -359,7 +362,7 @@ def _llm_book_cleanup_logic(tp, db_session):
 
             cleaned_chunks.append(cleaned_chunk)
         except RuntimeError as e:
-            print(f"Error processing chunk {i+1} for transcript {tp.id}: {e}")
+            logger.error(f"Error processing chunk {i+1} for transcript {tp.id}: {e}")
             raise e
 
     # 3. Reassemble the sermon
@@ -388,7 +391,7 @@ def _update_metadata_file_logic(tp, db_session):
     Logic for the update metadata file stage.
     """
     if not tp.book_ready_path or not tp.metadata_path:
-        print(f"Missing paths for transcript processing id: {tp.id}")
+        logger.error(f"Missing paths for transcript processing id: {tp.id}")
         return
 
     # 1. Read existing metadata
@@ -396,7 +399,7 @@ def _update_metadata_file_logic(tp, db_session):
         try:
             metadata = json.load(f)
         except json.JSONDecodeError:
-            print(f"Warning: Could not parse JSON from {tp.metadata_path}. Starting with an empty metadata object.")
+            logger.warning(f"Warning: Could not parse JSON from {tp.metadata_path}. Starting with an empty metadata object.")
             metadata = {}
 
 
@@ -461,7 +464,7 @@ def post_process_transcripts():
     Main function to orchestrate the post-processing of transcripts
     by advancing them through all stages for each transcript.
     """
-    print("\n--- Starting Transcript Post-Processing ---")
+    logger.info("--- Starting Transcript Post-Processing ---")
     db_session = db.SessionLocal()
     stop_processing = [False] # Initialize stop flag
     try:
@@ -477,14 +480,14 @@ def post_process_transcripts():
         ).order_by(db.TranscriptProcessing.id).all()
         
         total_transcripts = len(transcripts_to_process)
-        print(f"Found {total_transcripts} transcripts to process through the pipeline.")
+        logger.info(f"Found {total_transcripts} transcripts to process through the pipeline.")
 
         for i, tp in enumerate(transcripts_to_process):
             if stop_processing[0]:
-                print("Processing halted due to Gemini API quota or other error.")
+                logger.warning("Processing halted due to Gemini API quota or other error.")
                 break
             
-            print(f"\n--- Processing Transcript: {tp.id} ({i + 1}/{total_transcripts}) ---")
+            logger.info(f"--- Processing Transcript: {tp.id} ({i + 1}/{total_transcripts}) ---")
 
             # 1. Initial Cleaning
             try:

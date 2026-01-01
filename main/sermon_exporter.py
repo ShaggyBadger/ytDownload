@@ -4,7 +4,9 @@ from datetime import datetime
 from pathlib import Path
 from sqlalchemy.orm import sessionmaker
 from db import Video, engine, TranscriptProcessing # Import TranscriptProcessing and db
+from logger import setup_logger
 
+logger = setup_logger(__name__)
 
 def export_single_sermon(transcript_processing_id):
     """
@@ -16,7 +18,7 @@ def export_single_sermon(transcript_processing_id):
     try:
         tp = session.query(TranscriptProcessing).filter(TranscriptProcessing.id == transcript_processing_id).first()
         if not tp:
-            print(f"Error: TranscriptProcessing entry with ID {transcript_processing_id} not found.")
+            logger.error(f"Error: TranscriptProcessing entry with ID {transcript_processing_id} not found.")
             return
 
         video_dir = Path(tp.raw_transcript_path).parent # Get the video directory (e.g., downloads/1_ytid)
@@ -29,10 +31,10 @@ def export_single_sermon(transcript_processing_id):
 
         # Check if files exist
         if not metadata_path.exists():
-            print(f"Error: Metadata file not found for transcript {transcript_processing_id} at {metadata_path}")
+            logger.error(f"Error: Metadata file not found for transcript {transcript_processing_id} at {metadata_path}")
             return
         if not secondary_transcript_path.exists():
-            print(f"Error: Secondary transcript file not found for transcript {transcript_processing_id} at {secondary_transcript_path}")
+            logger.error(f"Error: Secondary transcript file not found for transcript {transcript_processing_id} at {secondary_transcript_path}")
             return
 
         # 1. Read and parse metadata (now purely JSON)
@@ -45,7 +47,7 @@ def export_single_sermon(transcript_processing_id):
                 raise ValueError("Missing title, thesis, or summary in metadata.")
 
         except (json.JSONDecodeError, FileNotFoundError, ValueError) as e:
-            print(f"Error processing metadata for transcript {transcript_processing_id}: {e}")
+            logger.error(f"Error processing metadata for transcript {transcript_processing_id}: {e}")
             return
 
         # 2. Query the database for video record
@@ -59,9 +61,9 @@ def export_single_sermon(transcript_processing_id):
                 except (ValueError, TypeError):
                     sermon_date_str = video_record.upload_date
             elif not video_record:
-                print(f"Warning: Video with ID '{tp.video_id}' not found in database for transcript {transcript_processing_id}.")
+                logger.warning(f"Warning: Video with ID '{tp.video_id}' not found in database for transcript {transcript_processing_id}.")
         except Exception as e:
-            print(f"Error querying database for video record {tp.video_id}: {e}")
+            logger.error(f"Error querying database for video record {tp.video_id}: {e}")
             return
         
         # 3. Read the secondary cleaned transcript
@@ -78,10 +80,10 @@ def export_single_sermon(transcript_processing_id):
         )
         export_path.write_text(export_content, encoding='utf-8')
         
-        print(f"sermon_export.txt created successfully for transcript: {transcript_processing_id} at {export_path}")
+        logger.info(f"sermon_export.txt created successfully for transcript: {transcript_processing_id} at {export_path}")
 
     except Exception as e:
-        print(f"An unexpected error occurred during export for transcript {transcript_processing_id}: {e}")
+        logger.error(f"An unexpected error occurred during export for transcript {transcript_processing_id}: {e}")
     finally:
         session.close()
 

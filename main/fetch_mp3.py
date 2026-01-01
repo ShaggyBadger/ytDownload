@@ -2,7 +2,10 @@ import yt_dlp
 from db import SessionLocal, Video
 from utils import get_video_paths
 from pydub import AudioSegment
-from pathlib import Path # Keep Path import as it's used for full_audio_path and mkdir
+from pathlib import Path
+from logger import setup_logger
+
+logger = setup_logger(__name__)
 
 def select_videos_to_process():
     """
@@ -17,17 +20,17 @@ def select_videos_to_process():
     db.close()
 
     if not videos_pending:
-        print("No videos are currently pending for MP3 processing.")
+        logger.info("No videos are currently pending for MP3 processing.")
         return []
 
-    print("\n--- Videos Pending MP3 Processing ---")
-    for i, video in enumerate(videos_pending, 1):
-        print(f"{i}: {video.title}")
-    print("all: Process all listed videos")
-    print("------------------------------------")
+    logger.info("\n--- Videos Pending MP3 Processing ---\n" +
+          "\n".join([f"{i}: {video.title}" for i, video in enumerate(videos_pending, 1)]) +
+          "\nall: Process all listed videos" +
+          "\n------------------------------------")
 
     while True:
         user_input = input("Enter the number of the video to process (or 'all'): ")
+        logger.info(f"User input: {user_input}")
 
         if user_input.lower() == 'all':
             return videos_pending
@@ -38,16 +41,16 @@ def select_videos_to_process():
                 # Return a list containing the single selected video
                 return [videos_pending[selected_index]]
             else:
-                print(f"Invalid number. Please enter a number between 1 and {len(videos_pending)}.")
+                logger.warning(f"Invalid number. Please enter a number between 1 and {len(videos_pending)}.")
         except ValueError:
-            print("Invalid input. Please enter a number or 'all'.")
+            logger.warning("Invalid input. Please enter a number or 'all'.")
 
 def process_selected_videos(videos_to_process):
     """
     Downloads and trims MP3 audio for the selected video objects.
     """
     if not videos_to_process:
-        print("No videos selected for processing.")
+        logger.info("No videos selected for processing.")
         return
 
     db = SessionLocal()
@@ -57,12 +60,11 @@ def process_selected_videos(videos_to_process):
     BASE_DOWNLOADS_DIR.mkdir(exist_ok=True)
 
     for video in videos_to_process:
-        print(f"\n--- Starting processing for: {video.title} ---")
+        logger.info(f"--- Starting processing for: {video.title} ---")
         
         paths = get_video_paths(video)
         if not paths:
-            print(f"Error: Could not get paths for video {video.id} - {video.yt_id}")
-            # Consider marking video as failed or logging
+            logger.error(f"Could not get paths for video {video.id} - {video.yt_id}")
             continue
 
         video_dir = Path(paths["video_dir"])
@@ -78,15 +80,15 @@ def process_selected_videos(videos_to_process):
                     percent_str = d.get('_percent_str', '0.0%').strip()
                     speed_str = d.get('_speed_str', '0.0B/s').strip()
                     eta_str = d.get('_eta_str', '00:00').strip()
-                    print(f"\rDownloading: {percent_str} | {speed_str} | ETA: {eta_str}", end='')
+                    logger.info(f"Downloading: {percent_str} | {speed_str} | ETA: {eta_str}")
                 if d['status'] == 'finished':
-                    print("\nDownload complete.")
+                    logger.info("Download complete.")
 
             def postprocessor_hook(d):
                 if d['status'] == 'started':
-                    print(f"Post-processing: {d['postprocessor']}...")
+                    logger.info(f"Post-processing: {d['postprocessor']}...")
                 if d['status'] == 'finished':
-                    print("Post-processing complete.")
+                    logger.info("Post-processing complete.")
             # ------------------------
 
             # Download
@@ -106,7 +108,7 @@ def process_selected_videos(videos_to_process):
                 try:
                     ydl.download([video.webpage_url])
                 except Exception as e:
-                    print("yt-dlp failed. Re-running with -v for full debug...")
+                    logger.error("yt-dlp failed. Re-running with -v for full debug...")
 
                     # Run shell-level yt-dlp debug to get full FFmpeg logs
                     import subprocess
@@ -117,15 +119,13 @@ def process_selected_videos(videos_to_process):
                         "-o", str(full_audio_path).replace('.mp3', '')
                     ]
                     dbg = subprocess.run(dbg_cmd, capture_output=True, text=True)
-                    print("\n=== YT-DLP DEBUG STDOUT ===")
-                    print(dbg.stdout)
-                    print("\n=== YT-DLP DEBUG STDERR ===")
-                    print(dbg.stderr)
+                    logger.debug(f"YT-DLP DEBUG STDOUT: {dbg.stdout}")
+                    logger.debug(f"YT-DLP DEBUG STDERR: {dbg.stderr}")
                     
                     raise
 
             # Trim
-            print("Trimming audio...")
+            logger.info("Trimming audio...")
             audio = AudioSegment.from_file(full_audio_path)
             start_ms = video.start_time * 1000
             end_ms = video.end_time * 1000
@@ -139,10 +139,10 @@ def process_selected_videos(videos_to_process):
                 db_video.download_path = paths["download_path"] # Path to the video's directory
                 db_video.mp3_path = paths["mp3_path"]           # Path to the trimmed MP3
                 db.commit()
-                print(f"Successfully processed and saved to {trimmed_audio_path}")
+                logger.info(f"Successfully processed and saved to {trimmed_audio_path}")
 
         except Exception as e:
-            print(f"\nAn error occurred while processing {video.title}: {e}")
+            logger.error(f"An error occurred while processing {video.title}: {e}")
             db.rollback() # Ensure the session is clean before updating status
             db_video = db.query(Video).filter(Video.id == video.id).first()
             if db_video:

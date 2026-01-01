@@ -2,6 +2,9 @@ import json
 from pathlib import Path
 import db
 from desktop_connection_utility import sftp_put, run_remote_cmd, create_remote_dir_if_not_exists
+from logger import setup_logger
+
+logger = setup_logger(__name__)
 
 # Define remote paths
 REMOTE_PROJECT_DIR = "/home/alexander/pyProjects/sermonTranscriber"
@@ -24,10 +27,10 @@ def prepare_and_transfer_files():
         ).all()
 
         if not videos_to_transcribe:
-            print("No new videos to transcribe.")
+            logger.info("No new videos to transcribe.")
             return
 
-        print(f"Found {len(videos_to_transcribe)} videos to transfer for transcription.")
+        logger.info(f"Found {len(videos_to_transcribe)} videos to transfer for transcription.")
 
         # 2. Prepare the JSON data
         json_data = []
@@ -43,21 +46,21 @@ def prepare_and_transfer_files():
             json.dump(json_data, f, indent=2)
 
         # 3. Transfer the files
-        print("Transferring files to the remote desktop...")
+        logger.info("Transferring files to the remote desktop...")
 
         # Create remote audio directory if it doesn't exist
         create_remote_dir_if_not_exists(REMOTE_AUDIO_DIR)
 
         # Transfer the JSON file
         sftp_put(str(local_json_path), REMOTE_JSON_PATH)
-        print(f"Transferred {local_json_path.name} to {REMOTE_JSON_PATH}")
+        logger.info(f"Transferred {local_json_path.name} to {REMOTE_JSON_PATH}")
 
         # Transfer the MP3 files
         for video in videos_to_transcribe:
             local_mp3_path = Path(video.mp3_path)
             remote_mp3_path = f"{REMOTE_AUDIO_DIR}/{local_mp3_path.name}"
             sftp_put(str(local_mp3_path), remote_mp3_path)
-            print(f"Transferred {local_mp3_path.name} to {remote_mp3_path}")
+            logger.info(f"Transferred {local_mp3_path.name} to {remote_mp3_path}")
 
         # 4. Update the database
         for video in videos_to_transcribe:
@@ -65,7 +68,7 @@ def prepare_and_transfer_files():
         db_session.commit()
 
 
-        print("File transfer and remote processing initiated successfully.")
+        logger.info("File transfer and remote processing initiated successfully.")
 
     finally:
         db_session.close()
@@ -91,10 +94,10 @@ def transfer_all_mp3_info_json():
         ).all()
 
         if not all_completed_mp3_videos:
-            print("No videos with completed MP3s found in the database.")
+            logger.info("No videos with completed MP3s found in the database.")
             return
 
-        print(f"Found {len(all_completed_mp3_videos)} videos with completed MP3s.")
+        logger.info(f"Found {len(all_completed_mp3_videos)} videos with completed MP3s.")
 
         # 2. Prepare the JSON data with mp3Id and mp3Name
         json_data = []
@@ -110,12 +113,12 @@ def transfer_all_mp3_info_json():
             json.dump(json_data, f, indent=2)
 
         # 3. Transfer the JSON file
-        print("Transferring all MP3 info JSON to the remote desktop...")
+        logger.info("Transferring all MP3 info JSON to the remote desktop...")
         # Use the same remote path as the standard transfer
         sftp_put(str(local_json_path), REMOTE_JSON_PATH)
-        print(f"Transferred {local_json_path.name} to {REMOTE_JSON_PATH}")
+        logger.info(f"Transferred {local_json_path.name} to {REMOTE_JSON_PATH}")
 
-        print("All MP3 info JSON transfer complete.")
+        logger.info("All MP3 info JSON transfer complete.")
 
     finally:
         db_session.close()
