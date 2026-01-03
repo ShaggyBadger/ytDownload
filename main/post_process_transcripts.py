@@ -742,6 +742,8 @@ class EditParagraphs:
             return None
 
 if __name__ == "__main__":
+    # TODO: build some kind of llm check to compare the raw and the edited versions? maybe use ollama?? 
+    # TODO: add option to save edited transcript back to DB/file system
     editor = EditParagraphs()
     edited_text = editor.run_editor()
     print("\n--- Edited Sermon Transcript ---\n")
