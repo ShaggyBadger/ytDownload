@@ -1,6 +1,6 @@
 from tkinter import E
 import db
-import math, re, json, concurrent.futures, threading
+import math, re, json, concurrent.futures, threading, os
 from pathlib import Path
 import subprocess
 from sqlalchemy import or_
@@ -18,11 +18,14 @@ class GeminiQuotaExceededError(Exception):
 
 def _call_gemini(prompt):
     """Runs the Gemini CLI with a given prompt, handling quota errors."""
+    env = os.environ.copy()
+    env['NO_BROWSER'] = 'true'
     result = subprocess.run(
         ["gemini", "-p", prompt],
         capture_output=True,
         text=True,
-        check=False # Do not raise CalledProcessError automatically
+        check=False, # Do not raise CalledProcessError automatically
+        env=env
     )
 
     if result.returncode != 0:
@@ -642,28 +645,32 @@ class EditParagraphs:
                         PARAGRAPH_NEXT=paragraphs[i + 1],
                         SERMON_OUTLINE=outline
                     )
-                prompts_dictionary[i] = prompt
+                prompts_dictionary[i] = {'prompt': prompt, 'original': paragraph}
             except FileNotFoundError as e:
                 logger.error(f"Error reading prompt file: {e}")
                 # Handle error, maybe skip this paragraph or use a default prompt
-                prompts_dictionary[i] = "" 
+                prompts_dictionary[i] = {'prompt': '', 'original': paragraph}
             except Exception as e:
                 logger.error(f"Error creating prompt for paragraph {i + 1}: {e}")
-                prompts_dictionary[i] = ""
+                prompts_dictionary[i] = {'prompt': '', 'original': paragraph}
 
         return prompts_dictionary
 
     def edit_paragraphs(self, prompts_dictionary):
-        """Processes a dictionary of prompts using multiple threads."""
+        """Processes a dictionary of prompts using multiple threads with retry logic."""
         edited_paragraphs = {}
         self.prompt_counter = 0
         self.lock = threading.Lock()
+        stop_processing = [False]
         
         num_prompts = len(prompts_dictionary)
 
         def _edit_paragraph_worker():
             """Worker function for threads."""
             while self.prompt_counter < num_prompts:
+                if stop_processing[0]:
+                    break
+
                 self.lock.acquire()
                 if self.prompt_counter >= num_prompts:
                     self.lock.release()
@@ -672,19 +679,35 @@ class EditParagraphs:
                 current_index = self.prompt_counter
                 self.prompt_counter += 1
                 self.lock.release()
+                logger.debug(f"Thread processing paragraph index: {current_index}")
 
-                prompt = prompts_dictionary[current_index]
-                if prompt:
+                prompt_data = prompts_dictionary[current_index]
+                prompt = prompt_data['prompt']
+                original_paragraph = prompt_data['original']
+                
+                if not prompt:
+                    edited_paragraphs[current_index] = original_paragraph
+                    continue
+
+                max_retries = 3
+                for attempt in range(max_retries):
                     try:
                         edited_paragraph = _call_gemini(prompt)
                         edited_paragraphs[current_index] = edited_paragraph
+                        if attempt > 0:
+                            logger.info(f"Successfully processed prompt at index {current_index} on attempt {attempt + 1}.")
+                        break # Success
+                    except GeminiQuotaExceededError as e:
+                        logger.critical(f"!!! CRITICAL: Gemini API quota hit. Halting all editing threads. Error: {e}.")
+                        stop_processing[0] = True
+                        edited_paragraphs[current_index] = original_paragraph
+                        break # Stop retrying on quota error
                     except Exception as e:
-                        logger.error(f"Error processing prompt at index {current_index}: {e}")
-                        # Fallback to an empty string or original paragraph if available
-                        edited_paragraphs[current_index] = "" 
-                else:
-                    edited_paragraphs[current_index] = ""
-
+                        logger.warning(f"Attempt {attempt + 1}/{max_retries} failed for prompt at index {current_index}: {e}")
+                        if attempt == max_retries - 1:
+                            logger.error(f"All {max_retries} attempts failed for prompt at index {current_index}. Using original paragraph.")
+                            edited_paragraphs[current_index] = original_paragraph
+                
         threads = []
         for _ in range(min(num_prompts, 5)): # Use up to 5 threads
             thread = threading.Thread(target=_edit_paragraph_worker)
