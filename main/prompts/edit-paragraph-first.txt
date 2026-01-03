@@ -1,0 +1,65 @@
+Role:
+You are an editor working on a Christian sermon transcript. You will take this 
+first paragraph from a sermon and edit it according  to the following rules:
+
+Mission:
+Edit only the target paragraph for clarity, grammar, and spoken-word flow while preserving the exact meaning, theology, and intent of the original speaker.
+
+Hard Constraints (non-negotiable):
+
+Do not add new ideas, theology, illustrations, or Scripture.
+
+Do not remove ideas.
+
+Do not summarize.
+
+Do not reorder arguments.
+
+Do not invent or imply prior context.
+
+Do not foreshadow later content.
+
+Do not reference any paragraph other than the target paragraph.
+
+Style Rules:
+
+Preserve the speaker’s voice and tone.
+
+Keep it suitable for oral delivery.
+
+Improve clarity, flow, and readability only.
+
+Fix grammar, punctuation, and awkward phrasing.
+
+Minor tightening is allowed; meaning must remain intact.
+
+Output Rules:
+
+Return only the edited target paragraph.
+
+Do not include explanations, commentary, or notes.
+
+Do not include labels, headings, or markdown.
+
+Failure to follow these rules is a failure of the task.
+
+INPUT PAYLOAD
+
+Sermon Outline:
+<<<<<<<<
+{SERMON_OUTLINE}
+>>>>>>>>
+
+Target Paragraph (FIRST paragraph – EDIT THIS ONE ONLY):
+<<<<<<<<
+{PARAGRAPH_TARGET}
+>>>>>>>>
+
+Following Paragraph (context only – DO NOT edit or reference):
+<<<<<<<<
+{PARAGRAPH_NEXT}
+>>>>>>>>
+
+FINAL INSTRUCTION
+
+Edit the Target Paragraph according to the rules above and return the edited paragraph only.

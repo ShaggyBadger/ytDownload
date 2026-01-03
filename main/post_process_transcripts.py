@@ -1,3 +1,4 @@
+from tkinter import E
 import db
 import math, re, json, concurrent.futures
 from pathlib import Path
@@ -191,7 +192,6 @@ def secondary_cleaning(transcript_processing_id, current_index=None, total_count
         stop_processing_flag=stop_processing_flag
     )
 
-
 def _gen_metadata_logic(tp, db_session):
     """
     Logic for the metadata generation stage, using threading for parallel API calls.
@@ -323,7 +323,6 @@ def python_scrub(transcript_processing_id):
         "python_scrub_complete",
         "Python Scrub"
     )
-
 
 def _llm_book_cleanup_logic(tp, db_session):
     """
@@ -458,7 +457,6 @@ def export_sermon_file(transcript_processing_id, current_index=None, total_count
 
 # --- Main Orchestration ---
 
-
 def post_process_transcripts():
     """
     Main function to orchestrate the post-processing of transcripts
@@ -519,3 +517,168 @@ def post_process_transcripts():
             
     finally:
         db_session.close()
+
+class EditParagraphs:
+    """Class to handle paragraph editing using Gemini API."""
+
+    def __init__(self):
+        """A class to handle paragraph-by-paragraph editing of a sermon."""
+        self.sermon_selected = False # This can be used to track state if needed
+        self.edited_paragraph_list = []
+
+    def select_sermon(self):
+        """Selects and returns a sermon from the database for editing."""
+        session = db.SessionLocal()
+        try:
+            sermons = session.query(db.TranscriptProcessing).filter(
+                or_(
+                    db.TranscriptProcessing.status == "metadata_generation_complete",
+                    db.TranscriptProcessing.status == "sermon_export_complete"
+                )
+            ).all()
+
+            if not sermons:
+                logger.info("No sermons available for editing.")
+                return None, None
+
+            logger.info("Available Sermons for Editing:")
+            for sermon in sermons:
+                logger.info(f"ID: {sermon.id}, Status: {sermon.status}, Raw Transcript Path: {sermon.raw_transcript_path}")
+
+            selected_id = input("Enter the ID of the sermon you want to edit: ")
+            try:
+                selected_id = int(selected_id)
+            except ValueError:
+                logger.error("Invalid input. Please enter a number.")
+                return None, None
+
+            selected_sermon = session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.id == selected_id).first()
+
+            if not selected_sermon:
+                logger.info(f"No sermon found with ID: {selected_id}")
+                return None, None
+
+            # Retrieve sermon text with paragraph breaks
+            if not selected_sermon.secondary_cleaning_path:
+                logger.error(f"Secondary cleaning path not found for sermon ID: {selected_id}")
+                return None, None
+            
+            try:
+                with open(selected_sermon.secondary_cleaning_path, 'r') as f:
+                    transcript_text = f.read()
+            except FileNotFoundError:
+                logger.error(f"Sermon text file not found at {selected_sermon.secondary_cleaning_path}")
+                return None, None
+            except Exception as e:
+                logger.error(f"Error reading sermon text file: {e}")
+                return None, None
+
+            # Retrieve outline from metadata
+            if not selected_sermon.metadata_path:
+                logger.error(f"Metadata path not found for sermon ID: {selected_id}")
+                return None, None
+
+            outline_data = None
+            try:
+                with open(selected_sermon.metadata_path, 'r') as f:
+                    metadata = json.load(f)
+                    outline_data = metadata.get('outline')
+            except FileNotFoundError:
+                logger.error(f"Metadata file not found at {selected_sermon.metadata_path}")
+                return None, None
+            except json.JSONDecodeError:
+                logger.error(f"Error decoding JSON from metadata file at {selected_sermon.metadata_path}")
+                return None, None
+            except Exception as e:
+                logger.error(f"Error reading or parsing metadata file: {e}")
+                return None, None
+
+            if not outline_data:
+                logger.warning(f"Outline data not found in metadata for sermon ID: {selected_id}")
+                return transcript_text, "" 
+
+            return transcript_text, outline_data
+        except Exception as e:
+            logger.error(f"Error selecting sermon: {e}")
+            return None, None
+        finally:
+            session.close()
+
+    def edit_paragraphs(self, transcript_text, outline):
+        """Edits each paragraph using the Gemini API to improve flow and clarity."""
+        # Initialize paths for prompts directory
+        BASE_DIR = Path(__file__).resolve().parent
+        PROMPTS_DIR = BASE_DIR / "prompts"
+
+        original_paragraph_list = transcript_text.split('\n\n')
+        total_paragraphs = len(original_paragraph_list)
+
+        # load these up once, no need to load them 500 times while processing paragraphs
+        standard_prompt_path = PROMPTS_DIR / "edit-paragraph-standard.txt"
+        first_paragraph_prompt_path = PROMPTS_DIR / "edit-paragraph-first.txt"
+        last_paragraph_prompt_path = PROMPTS_DIR / "edit-paragraph-last.txt"
+
+        for i, paragraph in enumerate(original_paragraph_list):
+            logger.debug(f"Editing paragraph {i + 1}/{total_paragraphs}...")
+
+            # Choose appropriate prompt
+            if i == 0:
+                prompt_template = first_paragraph_prompt_path.read_text()
+                prompt = prompt_template.format(
+                    PARAGRAPH_TARGET=paragraph,
+                    PARAGRAPH_NEXT=original_paragraph_list[i + 1],
+                    SERMON_OUTLINE=outline
+                )
+            elif i == total_paragraphs - 1:
+                prompt_template = last_paragraph_prompt_path.read_text()
+                prompt = prompt_template.format(
+                    PARAGRAPH_TARGET=paragraph,
+                    PARAGRAPH_PREV=original_paragraph_list[i - 1],
+                    SERMON_OUTLINE=outline
+                )
+            else:
+                prompt_template = standard_prompt_path.read_text()
+                prompt = prompt_template.format(
+                    PARAGRAPH_TARGET=paragraph,
+                    PARAGRAPH_PREV=original_paragraph_list[i - 1],
+                    PARAGRAPH_NEXT=original_paragraph_list[i + 1],
+                    SERMON_OUTLINE=outline
+                    )
+
+            # run prompt through the LLM
+            print(prompt)
+            input()
+            try:
+                edited_paragraph = _call_gemini(prompt)
+                self.edited_paragraph_list.append(edited_paragraph)
+
+            except FileNotFoundError as e:
+                logger.error(f"Error reading prompt file: {e}")
+                self.edited_paragraph_list.append(paragraph) # Fallback to original
+                continue
+            except Exception as e:
+                logger.error(f"Error editing paragraph {i + 1}: {e}")
+                self.edited_paragraph_list.append(paragraph) # Fallback to original paragraph
+                continue
+
+        # Reassemble the edited paragraphs into a single text
+        edited_transcript = "\n\n".join(self.edited_paragraph_list)
+        return edited_transcript
+
+    def run_editor(self):
+        """Orchestrates the sermon editing process."""
+        transcript_text, outline = self.select_sermon()
+
+        if transcript_text and outline is not None:
+            logger.info("Starting sermon editing process...")
+            edited_transcript = self.edit_paragraphs(transcript_text, outline)
+            logger.info("Sermon editing complete.")
+            return edited_transcript
+        else:
+            logger.info("Sermon editing process aborted.")
+            return None
+
+if __name__ == "__main__":
+    editor = EditParagraphs()
+    edited_text = editor.run_editor()
+    
