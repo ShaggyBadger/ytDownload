@@ -1,6 +1,6 @@
 from tkinter import E
 import db
-import math, re, json, concurrent.futures
+import math, re, json, concurrent.futures, threading
 from pathlib import Path
 import subprocess
 from sqlalchemy import or_
@@ -524,7 +524,6 @@ class EditParagraphs:
     def __init__(self):
         """A class to handle paragraph-by-paragraph editing of a sermon."""
         self.sermon_selected = False # This can be used to track state if needed
-        self.edited_paragraph_list = []
 
     def select_sermon(self):
         """Selects and returns a sermon from the database for editing."""
@@ -604,65 +603,101 @@ class EditParagraphs:
         finally:
             session.close()
 
-    def edit_paragraphs(self, transcript_text, outline):
-        """Edits each paragraph using the Gemini API to improve flow and clarity."""
+    def _build_prompts_dictionary(self, transcript_text, outline):
+        """Builds a dictionary of prompts for editing each paragraph."""
         # Initialize paths for prompts directory
         BASE_DIR = Path(__file__).resolve().parent
         PROMPTS_DIR = BASE_DIR / "prompts"
 
-        original_paragraph_list = transcript_text.split('\n\n')
-        total_paragraphs = len(original_paragraph_list)
-
-        # load these up once, no need to load them 500 times while processing paragraphs
+        # load prompt templates
         standard_prompt_path = PROMPTS_DIR / "edit-paragraph-standard.txt"
         first_paragraph_prompt_path = PROMPTS_DIR / "edit-paragraph-first.txt"
         last_paragraph_prompt_path = PROMPTS_DIR / "edit-paragraph-last.txt"
 
-        for i, paragraph in enumerate(original_paragraph_list):
-            logger.debug(f"Editing paragraph {i + 1}/{total_paragraphs}...")
+        paragraphs = transcript_text.split('\n\n')
+        prompts_dictionary = {}
+        total_paragraphs = len(paragraphs)
 
-            # Choose appropriate prompt
-            if i == 0:
-                prompt_template = first_paragraph_prompt_path.read_text()
-                prompt = prompt_template.format(
-                    PARAGRAPH_TARGET=paragraph,
-                    PARAGRAPH_NEXT=original_paragraph_list[i + 1],
-                    SERMON_OUTLINE=outline
-                )
-            elif i == total_paragraphs - 1:
-                prompt_template = last_paragraph_prompt_path.read_text()
-                prompt = prompt_template.format(
-                    PARAGRAPH_TARGET=paragraph,
-                    PARAGRAPH_PREV=original_paragraph_list[i - 1],
-                    SERMON_OUTLINE=outline
-                )
-            else:
-                prompt_template = standard_prompt_path.read_text()
-                prompt = prompt_template.format(
-                    PARAGRAPH_TARGET=paragraph,
-                    PARAGRAPH_PREV=original_paragraph_list[i - 1],
-                    PARAGRAPH_NEXT=original_paragraph_list[i + 1],
-                    SERMON_OUTLINE=outline
-                    )
-
-            # run prompt through the LLM
-            print(prompt)
-            input()
+        for i, paragraph in enumerate(paragraphs):
             try:
-                edited_paragraph = _call_gemini(prompt)
-                self.edited_paragraph_list.append(edited_paragraph)
-
+                if i == 0:
+                    prompt_template = first_paragraph_prompt_path.read_text()
+                    prompt = prompt_template.format(
+                        PARAGRAPH_TARGET=paragraph,
+                        PARAGRAPH_NEXT=paragraphs[i + 1],
+                        SERMON_OUTLINE=outline
+                    )
+                elif i == total_paragraphs - 1:
+                    prompt_template = last_paragraph_prompt_path.read_text()
+                    prompt = prompt_template.format(
+                        PARAGRAPH_TARGET=paragraph,
+                        PARAGRAPH_PREV=paragraphs[i - 1],
+                        SERMON_OUTLINE=outline
+                    )
+                else:
+                    prompt_template = standard_prompt_path.read_text()
+                    prompt = prompt_template.format(
+                        PARAGRAPH_TARGET=paragraph,
+                        PARAGRAPH_PREV=paragraphs[i - 1],
+                        PARAGRAPH_NEXT=paragraphs[i + 1],
+                        SERMON_OUTLINE=outline
+                    )
+                prompts_dictionary[i] = prompt
             except FileNotFoundError as e:
                 logger.error(f"Error reading prompt file: {e}")
-                self.edited_paragraph_list.append(paragraph) # Fallback to original
-                continue
+                # Handle error, maybe skip this paragraph or use a default prompt
+                prompts_dictionary[i] = "" 
             except Exception as e:
-                logger.error(f"Error editing paragraph {i + 1}: {e}")
-                self.edited_paragraph_list.append(paragraph) # Fallback to original paragraph
-                continue
+                logger.error(f"Error creating prompt for paragraph {i + 1}: {e}")
+                prompts_dictionary[i] = ""
 
-        # Reassemble the edited paragraphs into a single text
-        edited_transcript = "\n\n".join(self.edited_paragraph_list)
+        return prompts_dictionary
+
+    def edit_paragraphs(self, prompts_dictionary):
+        """Processes a dictionary of prompts using multiple threads."""
+        edited_paragraphs = {}
+        self.prompt_counter = 0
+        self.lock = threading.Lock()
+        
+        num_prompts = len(prompts_dictionary)
+
+        def _edit_paragraph_worker():
+            """Worker function for threads."""
+            while self.prompt_counter < num_prompts:
+                self.lock.acquire()
+                if self.prompt_counter >= num_prompts:
+                    self.lock.release()
+                    break
+                
+                current_index = self.prompt_counter
+                self.prompt_counter += 1
+                self.lock.release()
+
+                prompt = prompts_dictionary[current_index]
+                if prompt:
+                    try:
+                        edited_paragraph = _call_gemini(prompt)
+                        edited_paragraphs[current_index] = edited_paragraph
+                    except Exception as e:
+                        logger.error(f"Error processing prompt at index {current_index}: {e}")
+                        # Fallback to an empty string or original paragraph if available
+                        edited_paragraphs[current_index] = "" 
+                else:
+                    edited_paragraphs[current_index] = ""
+
+        threads = []
+        for _ in range(min(num_prompts, 5)): # Use up to 5 threads
+            thread = threading.Thread(target=_edit_paragraph_worker)
+            threads.append(thread)
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        # Reassemble the edited paragraphs into a single text in the correct order
+        edited_transcript_list = [edited_paragraphs.get(i, "") for i in range(num_prompts)]
+        edited_transcript = "\n\n".join(edited_transcript_list)
+        
         return edited_transcript
 
     def run_editor(self):
@@ -670,9 +705,14 @@ class EditParagraphs:
         transcript_text, outline = self.select_sermon()
 
         if transcript_text and outline is not None:
+            logger.info("Building prompts dictionary...")
+            prompts = self._build_prompts_dictionary(transcript_text, outline)
+            logger.info(f"Built prompts for {len(prompts)} paragraphs.")
+            
             logger.info("Starting sermon editing process...")
-            edited_transcript = self.edit_paragraphs(transcript_text, outline)
-            logger.info("Sermon editing complete.")
+            edited_transcript = self.edit_paragraphs(prompts)
+            logger.info("Sermon editing process complete.")
+            
             return edited_transcript
         else:
             logger.info("Sermon editing process aborted.")
@@ -681,4 +721,5 @@ class EditParagraphs:
 if __name__ == "__main__":
     editor = EditParagraphs()
     edited_text = editor.run_editor()
-    
+    print("\n--- Edited Sermon Transcript ---\n")
+    print(edited_text)
