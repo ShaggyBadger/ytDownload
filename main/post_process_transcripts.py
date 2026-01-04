@@ -6,6 +6,7 @@ import subprocess
 from sqlalchemy import or_
 from utils import get_video_paths
 from logger import setup_logger
+import time, random
 
 logger = setup_logger(__name__)
 
@@ -656,9 +657,14 @@ class EditParagraphs:
 
         return prompts_dictionary
 
+    def build_paragraph_editing_score(self, original_paragraph_dict, edited_paragraph_dict):
+        """Compares original and edited paragraphs to build an editing score."""
+        # build json file detaining the differences
+        pass
+
     def edit_paragraphs(self, prompts_dictionary):
         """Processes a dictionary of prompts using multiple threads with retry logic."""
-        edited_paragraphs = {}
+        edited_paragraphs = {} # holds edited paragraphs
         self.prompt_counter = 0
         self.lock = threading.Lock()
         stop_processing = [False]
@@ -681,9 +687,9 @@ class EditParagraphs:
                 self.lock.release()
                 logger.debug(f"Thread processing paragraph index: {current_index}")
 
-                prompt_data = prompts_dictionary[current_index]
-                prompt = prompt_data['prompt']
-                original_paragraph = prompt_data['original']
+                prompt_data = prompts_dictionary.get(current_index)
+                prompt = prompt_data.get('prompt')
+                original_paragraph = prompt_data.get('original')
                 
                 if not prompt:
                     edited_paragraphs[current_index] = original_paragraph
@@ -709,10 +715,11 @@ class EditParagraphs:
                             edited_paragraphs[current_index] = original_paragraph
                 
         threads = []
-        for _ in range(min(num_prompts, 5)): # Use up to 5 threads
+        for _ in range(min(num_prompts, 10)): # Use up to 10 threads
             thread = threading.Thread(target=_edit_paragraph_worker)
             threads.append(thread)
             thread.start()
+            time.sleep(random.uniform(1.0, 2.0))  # stagger launches
 
         for thread in threads:
             thread.join()
@@ -728,13 +735,17 @@ class EditParagraphs:
         transcript_text, outline = self.select_sermon()
 
         if transcript_text and outline is not None:
+            # build prompts dictionary
             logger.info("Building prompts dictionary...")
             prompts = self._build_prompts_dictionary(transcript_text, outline)
             logger.info(f"Built prompts for {len(prompts)} paragraphs.")
             
+            # edit paragraphs
             logger.info("Starting sermon editing process...")
             edited_transcript = self.edit_paragraphs(prompts)
             logger.info("Sermon editing process complete.")
+
+            # save edited transcript to file
             
             return edited_transcript
         else:
