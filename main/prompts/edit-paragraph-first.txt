@@ -45,11 +45,6 @@ Failure to follow these rules is a failure of the task.
 
 INPUT PAYLOAD
 
-Sermon Outline:
-<<<<<<<<
-{SERMON_OUTLINE}
->>>>>>>>
-
 Target Paragraph (FIRST paragraph – EDIT THIS ONE ONLY):
 <<<<<<<<
 {PARAGRAPH_TARGET}

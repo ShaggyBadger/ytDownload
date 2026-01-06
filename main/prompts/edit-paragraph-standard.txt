@@ -44,11 +44,6 @@ Failure to follow these rules is a failure of the task.
 
 INPUT PAYLOAD
 
-Sermon Outline (for intent only, not content):
-<<<<<<<<
-{SERMON_OUTLINE}
->>>>>>>>
-
 Preceding Paragraph (context only – DO NOT edit or reference):
 <<<<<<<<
 {PARAGRAPH_PREV}

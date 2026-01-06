@@ -17,24 +17,35 @@ class GeminiQuotaExceededError(Exception):
 
 # --- Helper Functions ---
 
-def _call_gemini(prompt):
-    """Runs the Gemini CLI with a given prompt, handling quota errors."""
+def _call_gemini(prompt, timeout=300): # Add timeout parameter with a default of 5 minutes
+    """Runs the Gemini CLI with a given prompt, handling quota errors and timeouts."""
     env = os.environ.copy()
-    env['NO_BROWSER'] = 'true'
-    result = subprocess.run(
-        ["gemini", "-p", prompt],
-        capture_output=True,
-        text=True,
-        check=False, # Do not raise CalledProcessError automatically
-        env=env
-    )
+    # Removed: env['NO_BROWSER'] = 'true'
+    
+    logger.debug(f"Sending prompt to Gemini CLI...")
+    try:
+        result = subprocess.run(
+            ["gemini", "-p", prompt],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+            timeout=timeout  # Add timeout to the subprocess call
+        )
+    except subprocess.TimeoutExpired as e:
+        logger.error(f"Gemini CLI command timed out after {timeout} seconds. Error: {e}")
+        # Re-raise as a RuntimeError to be caught by the worker's error handling
+        raise RuntimeError(f"Gemini CLI timed out.") from e
 
     if result.returncode != 0:
         error_message = result.stderr.strip()
+        logger.error(f"Gemini CLI error. Return Code: {result.returncode}, Stderr: {error_message}")
         if "quota" in error_message.lower() or "limit" in error_message.lower():
             raise GeminiQuotaExceededError(f"Gemini API quota exceeded: {error_message}")
         else:
             raise RuntimeError(f"Gemini CLI error: {error_message}")
+            
+    logger.debug("Gemini call successful.")
     return result.stdout.strip()
 
 def _get_video_duration_str(db_session, video_id):
@@ -530,7 +541,7 @@ class EditParagraphs:
         self.sermon_selected = False # This can be used to track state if needed
 
     def select_sermon(self):
-        """Selects and returns a sermon from the database for editing."""
+        """Selects and returns a sermon's data from the database for editing."""
         session = db.SessionLocal()
         try:
             sermons = session.query(db.TranscriptProcessing).filter(
@@ -542,73 +553,65 @@ class EditParagraphs:
 
             if not sermons:
                 logger.info("No sermons available for editing.")
-                return None, None
+                return None, None, None
 
             logger.info("Available Sermons for Editing:")
             for sermon in sermons:
-                logger.info(f"ID: {sermon.id}, Status: {sermon.status}, Raw Transcript Path: {sermon.raw_transcript_path}")
+                logger.info(f"ID: {sermon.id}, Status: {sermon.status}, Path: {sermon.raw_transcript_path}")
 
-            selected_id = input("Enter the ID of the sermon you want to edit: ")
+            selected_id_str = input("Enter the ID of the sermon you want to edit: ")
             try:
-                selected_id = int(selected_id)
+                selected_id = int(selected_id_str)
             except ValueError:
                 logger.error("Invalid input. Please enter a number.")
-                return None, None
+                return None, None, None
 
             selected_sermon = session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.id == selected_id).first()
 
             if not selected_sermon:
                 logger.info(f"No sermon found with ID: {selected_id}")
-                return None, None
+                return None, None, None
 
-            # Retrieve sermon text with paragraph breaks
+            # Retrieve sermon text
             if not selected_sermon.secondary_cleaning_path:
                 logger.error(f"Secondary cleaning path not found for sermon ID: {selected_id}")
-                return None, None
+                return None, None, None
             
             try:
                 with open(selected_sermon.secondary_cleaning_path, 'r') as f:
                     transcript_text = f.read()
             except FileNotFoundError:
                 logger.error(f"Sermon text file not found at {selected_sermon.secondary_cleaning_path}")
-                return None, None
-            except Exception as e:
-                logger.error(f"Error reading sermon text file: {e}")
-                return None, None
+                return None, None, None
 
             # Retrieve outline from metadata
-            if not selected_sermon.metadata_path:
-                logger.error(f"Metadata path not found for sermon ID: {selected_id}")
-                return None, None
+            outline_data = "" # Default to empty string
+            if selected_sermon.metadata_path:
+                try:
+                    with open(selected_sermon.metadata_path, 'r') as f:
+                        metadata = json.load(f)
+                        outline_data = metadata.get('outline', '')
+                except (FileNotFoundError, json.JSONDecodeError) as e:
+                    logger.warning(f"Could not read or parse outline from {selected_sermon.metadata_path}: {e}")
+            else:
+                logger.warning(f"Metadata path not found for sermon ID: {selected_id}. Outline will be empty.")
+            
+            return selected_sermon, transcript_text, outline_data
 
-            outline_data = None
-            try:
-                with open(selected_sermon.metadata_path, 'r') as f:
-                    metadata = json.load(f)
-                    outline_data = metadata.get('outline')
-            except FileNotFoundError:
-                logger.error(f"Metadata file not found at {selected_sermon.metadata_path}")
-                return None, None
-            except json.JSONDecodeError:
-                logger.error(f"Error decoding JSON from metadata file at {selected_sermon.metadata_path}")
-                return None, None
-            except Exception as e:
-                logger.error(f"Error reading or parsing metadata file: {e}")
-                return None, None
-
-            if not outline_data:
-                logger.warning(f"Outline data not found in metadata for sermon ID: {selected_id}")
-                return transcript_text, "" 
-
-            return transcript_text, outline_data
         except Exception as e:
-            logger.error(f"Error selecting sermon: {e}")
-            return None, None
+            logger.error(f"An unexpected error occurred in select_sermon: {e}")
+            return None, None, None
         finally:
             session.close()
 
-    def _build_prompts_dictionary(self, transcript_text, outline):
-        """Builds a dictionary of prompts for editing each paragraph."""
+    def _get_paragraph_file_path(self, selected_sermon):
+        """Returns the path for the paragraphs.json file for a given sermon."""
+        if not selected_sermon or not selected_sermon.raw_transcript_path:
+            return None
+        return Path(selected_sermon.raw_transcript_path).parent / "paragraphs.json"
+
+    def _build_paragraphs_json_data(self, transcript_text, outline):
+        """Builds the initial data structure for paragraphs.json."""
         # Initialize paths for prompts directory
         BASE_DIR = Path(__file__).resolve().parent
         PROMPTS_DIR = BASE_DIR / "prompts"
@@ -619,138 +622,186 @@ class EditParagraphs:
         last_paragraph_prompt_path = PROMPTS_DIR / "edit-paragraph-last.txt"
 
         paragraphs = transcript_text.split('\n\n')
-        prompts_dictionary = {}
+        paragraphs_data = []
         total_paragraphs = len(paragraphs)
 
         for i, paragraph in enumerate(paragraphs):
+            prompt = ""
             try:
-                if i == 0:
+                if i == 0 and total_paragraphs > 1:
                     prompt_template = first_paragraph_prompt_path.read_text()
-                    prompt = prompt_template.format(
-                        PARAGRAPH_TARGET=paragraph,
-                        PARAGRAPH_NEXT=paragraphs[i + 1],
-                        SERMON_OUTLINE=outline
-                    )
-                elif i == total_paragraphs - 1:
+                    prompt = prompt_template.format(PARAGRAPH_TARGET=paragraph, PARAGRAPH_NEXT=paragraphs[i + 1])
+                elif i == total_paragraphs - 1 and total_paragraphs > 1:
                     prompt_template = last_paragraph_prompt_path.read_text()
-                    prompt = prompt_template.format(
-                        PARAGRAPH_TARGET=paragraph,
-                        PARAGRAPH_PREV=paragraphs[i - 1],
-                        SERMON_OUTLINE=outline
-                    )
-                else:
+                    prompt = prompt_template.format(PARAGRAPH_TARGET=paragraph, PARAGRAPH_PREV=paragraphs[i - 1])
+                elif total_paragraphs > 1:
                     prompt_template = standard_prompt_path.read_text()
-                    prompt = prompt_template.format(
-                        PARAGRAPH_TARGET=paragraph,
-                        PARAGRAPH_PREV=paragraphs[i - 1],
-                        PARAGRAPH_NEXT=paragraphs[i + 1],
-                        SERMON_OUTLINE=outline
-                    )
-                prompts_dictionary[i] = {'prompt': prompt, 'original': paragraph}
+                    prompt = prompt_template.format(PARAGRAPH_TARGET=paragraph, PARAGRAPH_PREV=paragraphs[i - 1], PARAGRAPH_NEXT=paragraphs[i + 1])
+                else: # Handle case with only one paragraph
+                    prompt_template = first_paragraph_prompt_path.read_text() # Or a specific single-paragraph prompt
+                    prompt = prompt_template.format(PARAGRAPH_TARGET=paragraph, PARAGRAPH_NEXT="")
+
+
+                paragraph_entry = {
+                    'index': i,
+                    'original': paragraph,
+                    'prompt': prompt,
+                    'edited': None
+                }
+                paragraphs_data.append(paragraph_entry)
+
             except FileNotFoundError as e:
                 logger.error(f"Error reading prompt file: {e}")
-                # Handle error, maybe skip this paragraph or use a default prompt
-                prompts_dictionary[i] = {'prompt': '', 'original': paragraph}
+                paragraphs_data.append({'index': i, 'original': paragraph, 'prompt': '', 'edited': None})
             except Exception as e:
                 logger.error(f"Error creating prompt for paragraph {i + 1}: {e}")
-                prompts_dictionary[i] = {'prompt': '', 'original': paragraph}
+                paragraphs_data.append({'index': i, 'original': paragraph, 'prompt': '', 'edited': None})
 
-        return prompts_dictionary
+        return paragraphs_data
 
     def build_paragraph_editing_score(self, original_paragraph_dict, edited_paragraph_dict):
         """Compares original and edited paragraphs to build an editing score."""
         # build json file detaining the differences
         pass
 
-    def edit_paragraphs(self, prompts_dictionary):
-        """Processes a dictionary of prompts using multiple threads with retry logic."""
-        edited_paragraphs = {} # holds edited paragraphs
-        self.prompt_counter = 0
-        self.lock = threading.Lock()
-        stop_processing = [False]
+    def _save_paragraphs_to_file(self, data, file_path, lock):
+        """Saves the paragraph data to the JSON file in a thread-safe manner."""
+        with lock:
+            try:
+                with open(file_path, 'w') as f:
+                    json.dump(data, f, indent=4)
+            except Exception as e:
+                logger.error(f"Failed to save progress to {file_path}: {e}")
+
+    def edit_paragraphs(self, paragraphs_data, paragraph_file_path, num_threads=4):
+        """Processes paragraphs that need editing and saves progress intermittently."""
         
-        num_prompts = len(prompts_dictionary)
+        file_lock = threading.Lock()
+        stop_event = threading.Event()
 
-        def _edit_paragraph_worker():
-            """Worker function for threads."""
-            while self.prompt_counter < num_prompts:
-                if stop_processing[0]:
-                    break
+        # Filter to get only the paragraphs that need editing
+        paragraphs_to_process = [p for p in paragraphs_data if p.get('edited') is None]
+        num_to_process = len(paragraphs_to_process)
 
-                self.lock.acquire()
-                if self.prompt_counter >= num_prompts:
-                    self.lock.release()
-                    break
-                
-                current_index = self.prompt_counter
-                self.prompt_counter += 1
-                self.lock.release()
-                logger.debug(f"Thread processing paragraph index: {current_index}")
+        if num_to_process == 0:
+            logger.info("All paragraphs have already been edited.")
+            # Reassemble the full transcript from the loaded data
+            edited_transcript = "\n\n".join(p.get('edited', p.get('original', '')) for p in paragraphs_data)
+            return edited_transcript
 
-                prompt_data = prompts_dictionary.get(current_index)
-                prompt = prompt_data.get('prompt')
-                original_paragraph = prompt_data.get('original')
-                
-                if not prompt:
-                    edited_paragraphs[current_index] = original_paragraph
-                    continue
+        logger.info(f"Starting parallel processing of {num_to_process} remaining paragraphs with {num_threads} threads...")
 
-                max_retries = 3
-                for attempt in range(max_retries):
-                    try:
-                        edited_paragraph = _call_gemini(prompt)
-                        edited_paragraphs[current_index] = edited_paragraph
-                        if attempt > 0:
-                            logger.info(f"Successfully processed prompt at index {current_index} on attempt {attempt + 1}.")
-                        break # Success
-                    except GeminiQuotaExceededError as e:
-                        logger.critical(f"!!! CRITICAL: Gemini API quota hit. Halting all editing threads. Error: {e}.")
-                        stop_processing[0] = True
-                        edited_paragraphs[current_index] = original_paragraph
-                        break # Stop retrying on quota error
-                    except Exception as e:
-                        logger.warning(f"Attempt {attempt + 1}/{max_retries} failed for prompt at index {current_index}: {e}")
-                        if attempt == max_retries - 1:
-                            logger.error(f"All {max_retries} attempts failed for prompt at index {current_index}. Using original paragraph.")
-                            edited_paragraphs[current_index] = original_paragraph
-                
-        threads = []
-        for _ in range(min(num_prompts, 10)): # Use up to 10 threads
-            thread = threading.Thread(target=_edit_paragraph_worker)
-            threads.append(thread)
-            thread.start()
-            time.sleep(random.uniform(1.0, 2.0))  # stagger launches
+        def _process_paragraph_worker(paragraph_item):
+            """Worker function to process a single paragraph."""
+            if stop_event.is_set():
+                return
 
-        for thread in threads:
-            thread.join()
+            index = paragraph_item.get('index')
+            prompt = paragraph_item.get('prompt')
+            original_paragraph = paragraph_item.get('original')
 
-        # Reassemble the edited paragraphs into a single text in the correct order
-        edited_transcript_list = [edited_paragraphs.get(i, "") for i in range(num_prompts)]
-        edited_transcript = "\n\n".join(edited_transcript_list)
+            if not prompt:
+                logger.warning(f"No prompt for paragraph {index}. Using original.")
+                paragraph_item['edited'] = original_paragraph
+                self._save_paragraphs_to_file(paragraphs_data, paragraph_file_path, file_lock)
+                return
+
+            max_retries = 3
+            for attempt in range(max_retries):
+                if stop_event.is_set():
+                    return
+                try:
+                    edited_text = _call_gemini(prompt, timeout=300)
+                    if attempt > 0:
+                        logger.info(f"Successfully processed paragraph {index} on attempt {attempt + 1}.")
+                    
+                    # Update the shared data structure
+                    paragraph_item['edited'] = edited_text
+                    # Save progress
+                    self._save_paragraphs_to_file(paragraphs_data, paragraph_file_path, file_lock)
+                    return
+
+                except GeminiQuotaExceededError as e:
+                    logger.critical(f"!!! CRITICAL: Gemini API quota hit. Halting all editing. Error: {e}.")
+                    stop_event.set()
+                    return
+
+                except RuntimeError as e:
+                    logger.warning(f"Attempt {attempt + 1}/{max_retries} failed for paragraph {index}: {e}")
+                    if attempt == max_retries - 1:
+                        logger.error(f"All {max_retries} attempts failed for paragraph {index}. Original will be used implicitly (edited=None).")
+                        return
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+            # Submit only the paragraphs that need processing
+            futures = {executor.submit(_process_paragraph_worker, p): p for p in paragraphs_to_process}
+
+            for i, future in enumerate(concurrent.futures.as_completed(futures)):
+                paragraph_item = futures[future]
+                try:
+                    future.result()  # Raise exceptions if any
+                    logger.info(f"Completed processing for paragraph {paragraph_item['index'] + 1}/{len(paragraphs_data)} ({i + 1}/{num_to_process} in this run). Progress saved.")
+                except Exception as exc:
+                    logger.error(f"Paragraph {paragraph_item['index']} generated an exception: {exc}")
+
+        logger.info("Paragraph processing run complete.")
         
-        return edited_transcript
+        # Final reassembly of the transcript
+        # Use 'edited' if available, otherwise fall back to 'original'
+        edited_transcript_list = []
+        for p in sorted(paragraphs_data, key=lambda x: x['index']):
+            if p.get('edited') is not None:
+                edited_transcript_list.append(p['edited'])
+            else:
+                logger.warning(f"Using original text for paragraph {p['index']} as it was not successfully edited.")
+                edited_transcript_list.append(p['original'])
+
+        return "\n\n".join(edited_transcript_list)
 
     def run_editor(self):
-        """Orchestrates the sermon editing process."""
-        transcript_text, outline = self.select_sermon()
+        """Orchestrates the sermon editing process with resumability."""
+        selected_sermon, transcript_text, outline = self.select_sermon()
 
-        if transcript_text and outline is not None:
-            # build prompts dictionary
-            logger.info("Building prompts dictionary...")
-            prompts = self._build_prompts_dictionary(transcript_text, outline)
-            logger.info(f"Built prompts for {len(prompts)} paragraphs.")
-            
-            # edit paragraphs
-            logger.info("Starting sermon editing process...")
-            edited_transcript = self.edit_paragraphs(prompts)
-            logger.info("Sermon editing process complete.")
-
-            # save edited transcript to file
-            
-            return edited_transcript
-        else:
+        if not selected_sermon:
             logger.info("Sermon editing process aborted.")
             return None
+
+        paragraph_file_path = self._get_paragraph_file_path(selected_sermon)
+        if not paragraph_file_path:
+            logger.error("Could not determine path for paragraphs.json. Aborting.")
+            return None
+
+        paragraphs_data = None
+        if paragraph_file_path.exists():
+            logger.info(f"Found existing paragraphs file: {paragraph_file_path}. Loading...")
+            try:
+                with open(paragraph_file_path, 'r') as f:
+                    paragraphs_data = json.load(f)
+                logger.info("Successfully loaded paragraph data.")
+            except (json.JSONDecodeError, IOError) as e:
+                logger.error(f"Error loading {paragraph_file_path}: {e}. Will create a new file.")
+        
+        if not paragraphs_data:
+            logger.info("Building new paragraphs data structure...")
+            paragraphs_data = self._build_paragraphs_json_data(transcript_text, outline)
+            logger.info(f"Saving initial paragraphs file to: {paragraph_file_path}")
+            # Use a temporary lock for this initial save
+            self._save_paragraphs_to_file(paragraphs_data, paragraph_file_path, threading.Lock())
+
+        # Start the editing process
+        edited_transcript = self.edit_paragraphs(paragraphs_data, paragraph_file_path, num_threads=4)
+
+        if edited_transcript:
+            # Save the final edited transcript to a new file
+            final_transcript_path = Path(selected_sermon.raw_transcript_path).with_suffix('.edited.txt')
+            try:
+                with open(final_transcript_path, 'w') as f:
+                    f.write(edited_transcript)
+                logger.info(f"Successfully saved final edited transcript to: {final_transcript_path}")
+            except IOError as e:
+                logger.error(f"Error saving final transcript: {e}")
+        
+        return edited_transcript
 
 if __name__ == "__main__":
     # TODO: build some kind of llm check to compare the raw and the edited versions? maybe use ollama?? 
