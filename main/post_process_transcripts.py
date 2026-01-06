@@ -532,6 +532,98 @@ def post_process_transcripts():
             
     finally:
         db_session.close()
+        
+    # After all other stages, run the final automated editing process
+    run_automated_paragraph_editing()
+
+def run_automated_paragraph_editing():
+    """
+    Finds all sermons ready for the final edit and processes them automatically
+    in sequential order.
+    """
+    logger.info("--- Starting Automated Final Paragraph Editing ---")
+    session = db.SessionLocal()
+    try:
+        sermons_to_process = session.query(db.TranscriptProcessing).filter(
+            db.TranscriptProcessing.status == "sermon_export_complete"
+        ).order_by(db.TranscriptProcessing.id).all()
+
+        if not sermons_to_process:
+            logger.info("No sermons are ready for the final automated edit.")
+            return
+
+        logger.info(f"Found {len(sermons_to_process)} sermons to process for final edit.")
+        editor = EditParagraphs()
+        num_threads = 1 # Always run sequentially in automation
+
+        for i, sermon in enumerate(sermons_to_process):
+            logger.info(f"--- Processing Sermon {i+1}/{len(sermons_to_process)} (ID: {sermon.id}) for final edit ---")
+
+            # 1. Retrieve sermon text
+            if not sermon.secondary_cleaning_path:
+                logger.error(f"Secondary cleaning path not found for sermon ID: {sermon.id}. Skipping.")
+                continue
+            try:
+                with open(sermon.secondary_cleaning_path, 'r') as f:
+                    transcript_text = f.read()
+            except FileNotFoundError:
+                logger.error(f"Sermon text file not found at {sermon.secondary_cleaning_path}. Skipping.")
+                continue
+
+            # 2. Retrieve outline from metadata
+            outline_data = ""
+            if sermon.metadata_path:
+                try:
+                    with open(sermon.metadata_path, 'r') as f:
+                        metadata = json.load(f)
+                        outline_data = metadata.get('outline', '')
+                except (FileNotFoundError, json.JSONDecodeError):
+                    pass # Warnings will be logged by the editor class if needed
+
+            # 3. Prepare paragraph data
+            paragraph_file_path = editor._get_paragraph_file_path(sermon)
+            if not paragraph_file_path:
+                logger.error(f"Could not determine path for paragraphs.json for sermon {sermon.id}. Skipping.")
+                continue
+
+            paragraphs_data = None
+            if paragraph_file_path.exists():
+                try:
+                    with open(paragraph_file_path, 'r') as f:
+                        paragraphs_data = json.load(f)
+                except (json.JSONDecodeError, IOError):
+                    pass # Will be handled by the next block
+            
+            if not paragraphs_data:
+                paragraphs_data = editor._build_paragraphs_json_data(transcript_text, outline_data)
+                editor._save_paragraphs_to_file(paragraphs_data, paragraph_file_path, threading.Lock())
+
+            # 4. Start the editing process
+            edited_transcript = editor.edit_paragraphs(paragraphs_data, paragraph_file_path, num_threads=num_threads)
+
+            if edited_transcript:
+                final_transcript_path = Path(sermon.raw_transcript_path).with_suffix('.edited.txt')
+                try:
+                    with open(final_transcript_path, 'w') as f:
+                        f.write(edited_transcript)
+                    logger.info(f"Successfully saved final edited transcript to: {final_transcript_path}")
+                    
+                    # 5. Update status
+                    sermon.status = 'final_edit_complete'
+                    session.commit()
+                    logger.info(f"Updated status to 'final_edit_complete' for sermon {sermon.id}")
+
+                except IOError as e:
+                    logger.error(f"Error saving final transcript for sermon {sermon.id}: {e}")
+                    session.rollback()
+        
+        logger.info("--- Automated final paragraph editing complete. ---")
+
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during automated editing: {e}")
+        session.rollback()
+    finally:
+        session.close()
 
 class EditParagraphs:
     """Class to handle paragraph editing using Gemini API."""
@@ -541,7 +633,7 @@ class EditParagraphs:
         self.sermon_selected = False # This can be used to track state if needed
 
     def select_sermon(self):
-        """Selects and returns a sermon's data from the database for editing."""
+        """Selects and returns a list of sermon objects for editing."""
         session = db.SessionLocal()
         try:
             sermons = session.query(db.TranscriptProcessing).filter(
@@ -549,58 +641,36 @@ class EditParagraphs:
                     db.TranscriptProcessing.status == "metadata_generation_complete",
                     db.TranscriptProcessing.status == "sermon_export_complete"
                 )
-            ).all()
+            ).order_by(db.TranscriptProcessing.id).all()
 
             if not sermons:
                 logger.info("No sermons available for editing.")
-                return None, None, None
+                return []
 
             logger.info("Available Sermons for Editing:")
             for sermon in sermons:
                 logger.info(f"ID: {sermon.id}, Status: {sermon.status}, Path: {sermon.raw_transcript_path}")
 
-            selected_id_str = input("Enter the ID of the sermon you want to edit: ")
+            selected_id_str = input("Enter the ID of the sermon you want to edit (or 'all' to process all): ")
+            
+            if selected_id_str.lower() == 'all':
+                return sermons
+
             try:
                 selected_id = int(selected_id_str)
+                selected_sermon = next((s for s in sermons if s.id == selected_id), None)
+                if selected_sermon:
+                    return [selected_sermon]
+                else:
+                    logger.info(f"No sermon found with ID: {selected_id}")
+                    return []
             except ValueError:
-                logger.error("Invalid input. Please enter a number.")
-                return None, None, None
-
-            selected_sermon = session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.id == selected_id).first()
-
-            if not selected_sermon:
-                logger.info(f"No sermon found with ID: {selected_id}")
-                return None, None, None
-
-            # Retrieve sermon text
-            if not selected_sermon.secondary_cleaning_path:
-                logger.error(f"Secondary cleaning path not found for sermon ID: {selected_id}")
-                return None, None, None
-            
-            try:
-                with open(selected_sermon.secondary_cleaning_path, 'r') as f:
-                    transcript_text = f.read()
-            except FileNotFoundError:
-                logger.error(f"Sermon text file not found at {selected_sermon.secondary_cleaning_path}")
-                return None, None, None
-
-            # Retrieve outline from metadata
-            outline_data = "" # Default to empty string
-            if selected_sermon.metadata_path:
-                try:
-                    with open(selected_sermon.metadata_path, 'r') as f:
-                        metadata = json.load(f)
-                        outline_data = metadata.get('outline', '')
-                except (FileNotFoundError, json.JSONDecodeError) as e:
-                    logger.warning(f"Could not read or parse outline from {selected_sermon.metadata_path}: {e}")
-            else:
-                logger.warning(f"Metadata path not found for sermon ID: {selected_id}. Outline will be empty.")
-            
-            return selected_sermon, transcript_text, outline_data
+                logger.error("Invalid input. Please enter a number or 'all'.")
+                return []
 
         except Exception as e:
             logger.error(f"An unexpected error occurred in select_sermon: {e}")
-            return None, None, None
+            return []
         finally:
             session.close()
 
@@ -759,49 +829,98 @@ class EditParagraphs:
         return "\n\n".join(edited_transcript_list)
 
     def run_editor(self):
-        """Orchestrates the sermon editing process with resumability."""
-        selected_sermon, transcript_text, outline = self.select_sermon()
+        """Orchestrates the sermon editing process for one or more sermons with resumability."""
+        sermons_to_process = self.select_sermon()
 
-        if not selected_sermon:
-            logger.info("Sermon editing process aborted.")
-            return None
+        if not sermons_to_process:
+            logger.info("No sermons selected. Aborting.")
+            return
 
-        paragraph_file_path = self._get_paragraph_file_path(selected_sermon)
-        if not paragraph_file_path:
-            logger.error("Could not determine path for paragraphs.json. Aborting.")
-            return None
-
-        paragraphs_data = None
-        if paragraph_file_path.exists():
-            logger.info(f"Found existing paragraphs file: {paragraph_file_path}. Loading...")
-            try:
-                with open(paragraph_file_path, 'r') as f:
-                    paragraphs_data = json.load(f)
-                logger.info("Successfully loaded paragraph data.")
-            except (json.JSONDecodeError, IOError) as e:
-                logger.error(f"Error loading {paragraph_file_path}: {e}. Will create a new file.")
+        # Ask the user about parallel processing once
+        num_threads = 4
+        if len(sermons_to_process) == 1: # Only ask for parallel if it's a single sermon with many paragraphs
+             use_threads_response = input("Do you want to use parallel processing (faster, but may require repeated auth)? (y/n): ").lower()
+             if use_threads_response != 'y':
+                 num_threads = 1
+        else: # For batch processing, default to sequential to avoid auth spam
+            logger.info("Batch processing multiple sermons. Defaulting to sequential mode to avoid repeated authentication.")
+            num_threads = 1
         
-        if not paragraphs_data:
-            logger.info("Building new paragraphs data structure...")
-            paragraphs_data = self._build_paragraphs_json_data(transcript_text, outline)
-            logger.info(f"Saving initial paragraphs file to: {paragraph_file_path}")
-            # Use a temporary lock for this initial save
-            self._save_paragraphs_to_file(paragraphs_data, paragraph_file_path, threading.Lock())
+        session = db.SessionLocal()
+        try:
+            for i, sermon in enumerate(sermons_to_process):
+                logger.info(f"--- Processing Sermon {i+1}/{len(sermons_to_process)} (ID: {sermon.id}) ---")
 
-        # Start the editing process
-        edited_transcript = self.edit_paragraphs(paragraphs_data, paragraph_file_path, num_threads=4)
+                # 1. Retrieve sermon text
+                if not sermon.secondary_cleaning_path:
+                    logger.error(f"Secondary cleaning path not found for sermon ID: {sermon.id}. Skipping.")
+                    continue
+                try:
+                    with open(sermon.secondary_cleaning_path, 'r') as f:
+                        transcript_text = f.read()
+                except FileNotFoundError:
+                    logger.error(f"Sermon text file not found at {sermon.secondary_cleaning_path}. Skipping.")
+                    continue
 
-        if edited_transcript:
-            # Save the final edited transcript to a new file
-            final_transcript_path = Path(selected_sermon.raw_transcript_path).with_suffix('.edited.txt')
-            try:
-                with open(final_transcript_path, 'w') as f:
-                    f.write(edited_transcript)
-                logger.info(f"Successfully saved final edited transcript to: {final_transcript_path}")
-            except IOError as e:
-                logger.error(f"Error saving final transcript: {e}")
-        
-        return edited_transcript
+                # 2. Retrieve outline from metadata
+                outline_data = "" # Default to empty string
+                if sermon.metadata_path:
+                    try:
+                        with open(sermon.metadata_path, 'r') as f:
+                            metadata = json.load(f)
+                            outline_data = metadata.get('outline', '')
+                    except (FileNotFoundError, json.JSONDecodeError) as e:
+                        logger.warning(f"Could not read or parse outline from {sermon.metadata_path}: {e}")
+                else:
+                    logger.warning(f"Metadata path not found for sermon ID: {sermon.id}. Outline will be empty.")
+
+                # 3. Prepare paragraph data
+                paragraph_file_path = self._get_paragraph_file_path(sermon)
+                if not paragraph_file_path:
+                    logger.error(f"Could not determine path for paragraphs.json for sermon {sermon.id}. Skipping.")
+                    continue
+
+                paragraphs_data = None
+                if paragraph_file_path.exists():
+                    logger.info(f"Found existing paragraphs file: {paragraph_file_path}. Loading...")
+                    try:
+                        with open(paragraph_file_path, 'r') as f:
+                            paragraphs_data = json.load(f)
+                        logger.info("Successfully loaded paragraph data.")
+                    except (json.JSONDecodeError, IOError) as e:
+                        logger.error(f"Error loading {paragraph_file_path}: {e}. Will create a new file.")
+                
+                if not paragraphs_data:
+                    logger.info("Building new paragraphs data structure...")
+                    paragraphs_data = self._build_paragraphs_json_data(transcript_text, outline_data)
+                    logger.info(f"Saving initial paragraphs file to: {paragraph_file_path}")
+                    self._save_paragraphs_to_file(paragraphs_data, paragraph_file_path, threading.Lock())
+
+                # 4. Start the editing process for the current sermon
+                edited_transcript = self.edit_paragraphs(paragraphs_data, paragraph_file_path, num_threads=num_threads)
+
+                if edited_transcript:
+                    final_transcript_path = Path(sermon.raw_transcript_path).with_suffix('.edited.txt')
+                    try:
+                        with open(final_transcript_path, 'w') as f:
+                            f.write(edited_transcript)
+                        logger.info(f"Successfully saved final edited transcript to: {final_transcript_path}")
+                        
+                        # 5. Update status
+                        sermon.status = 'final_edit_complete'
+                        session.commit()
+                        logger.info(f"Updated status to 'final_edit_complete' for sermon {sermon.id}")
+
+                    except IOError as e:
+                        logger.error(f"Error saving final transcript for sermon {sermon.id}: {e}")
+                        session.rollback()
+            
+            logger.info("--- Sermon editing process complete. ---")
+
+        finally:
+            session.close()
+
+        return # No need to return the transcript text anymore as it could be very long for batches
 
 if __name__ == "__main__":
     # TODO: build some kind of llm check to compare the raw and the edited versions? maybe use ollama?? 

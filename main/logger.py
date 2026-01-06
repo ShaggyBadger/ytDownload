@@ -4,7 +4,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 # --- Configuration ---
-LOG_LEVEL = logging.DEBUG # Set your desired global log level here
+LOG_LEVEL = logging.INFO # Set your desired global log level here
 
 # Determine the project's base directory (which is the parent of the 'main' directory)
 BASE_DIR = Path(__file__).resolve().parent.parent
