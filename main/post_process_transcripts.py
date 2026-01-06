@@ -599,7 +599,7 @@ def run_automated_paragraph_editing():
                 editor._save_paragraphs_to_file(paragraphs_data, paragraph_file_path, threading.Lock())
 
             # 4. Start the editing process
-            edited_transcript = editor.edit_paragraphs(paragraphs_data, paragraph_file_path, num_threads=num_threads)
+            edited_transcript = editor.edit_paragraphs(paragraphs_data, paragraph_file_path)
 
             if edited_transcript:
                 final_transcript_path = Path(sermon.raw_transcript_path).with_suffix('.edited.txt')
@@ -743,7 +743,7 @@ class EditParagraphs:
             except Exception as e:
                 logger.error(f"Failed to save progress to {file_path}: {e}")
 
-    def edit_paragraphs(self, paragraphs_data, paragraph_file_path, num_threads=4):
+    def edit_paragraphs(self, paragraphs_data, paragraph_file_path):
         """Processes paragraphs that need editing and saves progress intermittently."""
         
         file_lock = threading.Lock()
@@ -759,8 +759,8 @@ class EditParagraphs:
             edited_transcript = "\n\n".join(p.get('edited', p.get('original', '')) for p in paragraphs_data)
             return edited_transcript
 
-        logger.info(f"Starting parallel processing of {num_to_process} remaining paragraphs with {num_threads} threads...")
-
+        logger.info(f"Starting parallel processing of {num_to_process} remaining paragraphs with 10 threads...")
+        
         def _process_paragraph_worker(paragraph_item):
             """Worker function to process a single paragraph."""
             if stop_event.is_set():
@@ -802,9 +802,15 @@ class EditParagraphs:
                         logger.error(f"All {max_retries} attempts failed for paragraph {index}. Original will be used implicitly (edited=None).")
                         return
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
-            # Submit only the paragraphs that need processing
-            futures = {executor.submit(_process_paragraph_worker, p): p for p in paragraphs_to_process}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            futures = {}
+            for i, p in enumerate(paragraphs_to_process):
+                futures[executor.submit(_process_paragraph_worker, p)] = p
+                # Add a small random delay between spawning threads
+                if i < len(paragraphs_to_process) - 1: # Don't delay after the last one
+                    delay = random.uniform(1.0, 3.0)
+                    logger.debug(f"Waiting for {delay:.2f} seconds before spawning next thread.")
+                    time.sleep(delay)
 
             for i, future in enumerate(concurrent.futures.as_completed(futures)):
                 paragraph_item = futures[future]
@@ -836,91 +842,6 @@ class EditParagraphs:
             logger.info("No sermons selected. Aborting.")
             return
 
-        # Ask the user about parallel processing once
-        num_threads = 4
-        if len(sermons_to_process) == 1: # Only ask for parallel if it's a single sermon with many paragraphs
-             use_threads_response = input("Do you want to use parallel processing (faster, but may require repeated auth)? (y/n): ").lower()
-             if use_threads_response != 'y':
-                 num_threads = 1
-        else: # For batch processing, default to sequential to avoid auth spam
-            logger.info("Batch processing multiple sermons. Defaulting to sequential mode to avoid repeated authentication.")
-            num_threads = 1
-        
-        session = db.SessionLocal()
-        try:
-            for i, sermon in enumerate(sermons_to_process):
-                logger.info(f"--- Processing Sermon {i+1}/{len(sermons_to_process)} (ID: {sermon.id}) ---")
-
-                # 1. Retrieve sermon text
-                if not sermon.secondary_cleaning_path:
-                    logger.error(f"Secondary cleaning path not found for sermon ID: {sermon.id}. Skipping.")
-                    continue
-                try:
-                    with open(sermon.secondary_cleaning_path, 'r') as f:
-                        transcript_text = f.read()
-                except FileNotFoundError:
-                    logger.error(f"Sermon text file not found at {sermon.secondary_cleaning_path}. Skipping.")
-                    continue
-
-                # 2. Retrieve outline from metadata
-                outline_data = "" # Default to empty string
-                if sermon.metadata_path:
-                    try:
-                        with open(sermon.metadata_path, 'r') as f:
-                            metadata = json.load(f)
-                            outline_data = metadata.get('outline', '')
-                    except (FileNotFoundError, json.JSONDecodeError) as e:
-                        logger.warning(f"Could not read or parse outline from {sermon.metadata_path}: {e}")
-                else:
-                    logger.warning(f"Metadata path not found for sermon ID: {sermon.id}. Outline will be empty.")
-
-                # 3. Prepare paragraph data
-                paragraph_file_path = self._get_paragraph_file_path(sermon)
-                if not paragraph_file_path:
-                    logger.error(f"Could not determine path for paragraphs.json for sermon {sermon.id}. Skipping.")
-                    continue
-
-                paragraphs_data = None
-                if paragraph_file_path.exists():
-                    logger.info(f"Found existing paragraphs file: {paragraph_file_path}. Loading...")
-                    try:
-                        with open(paragraph_file_path, 'r') as f:
-                            paragraphs_data = json.load(f)
-                        logger.info("Successfully loaded paragraph data.")
-                    except (json.JSONDecodeError, IOError) as e:
-                        logger.error(f"Error loading {paragraph_file_path}: {e}. Will create a new file.")
-                
-                if not paragraphs_data:
-                    logger.info("Building new paragraphs data structure...")
-                    paragraphs_data = self._build_paragraphs_json_data(transcript_text, outline_data)
-                    logger.info(f"Saving initial paragraphs file to: {paragraph_file_path}")
-                    self._save_paragraphs_to_file(paragraphs_data, paragraph_file_path, threading.Lock())
-
-                # 4. Start the editing process for the current sermon
-                edited_transcript = self.edit_paragraphs(paragraphs_data, paragraph_file_path, num_threads=num_threads)
-
-                if edited_transcript:
-                    final_transcript_path = Path(sermon.raw_transcript_path).with_suffix('.edited.txt')
-                    try:
-                        with open(final_transcript_path, 'w') as f:
-                            f.write(edited_transcript)
-                        logger.info(f"Successfully saved final edited transcript to: {final_transcript_path}")
-                        
-                        # 5. Update status
-                        sermon.status = 'final_edit_complete'
-                        session.commit()
-                        logger.info(f"Updated status to 'final_edit_complete' for sermon {sermon.id}")
-
-                    except IOError as e:
-                        logger.error(f"Error saving final transcript for sermon {sermon.id}: {e}")
-                        session.rollback()
-            
-            logger.info("--- Sermon editing process complete. ---")
-
-        finally:
-            session.close()
-
-        return # No need to return the transcript text anymore as it could be very long for batches
 
 if __name__ == "__main__":
     # TODO: build some kind of llm check to compare the raw and the edited versions? maybe use ollama?? 
