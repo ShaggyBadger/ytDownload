@@ -1,12 +1,12 @@
 from tkinter import E
 import db
-import math, re, json, concurrent.futures, threading, os
+import math, re, json, os
 from pathlib import Path
 import subprocess
 from sqlalchemy import or_
 from utils import get_video_paths
 from logger import setup_logger
-import time, random
+import time
 
 logger = setup_logger(__name__)
 
@@ -207,60 +207,49 @@ def secondary_cleaning(transcript_processing_id, current_index=None, total_count
         stop_processing_flag=stop_processing_flag
     )
 
-def _gen_metadata_logic(tp, db_session):
-    """
-    Logic for the metadata generation stage, using threading for parallel API calls.
-    """
-    with open(tp.secondary_cleaning_path, 'r') as f:
-        text_for_metadata = f.read()
+    def _gen_metadata_logic(tp, db_session):
+        """
+        Logic for the metadata generation stage, processing fields sequentially.
+        """
+        with open(tp.secondary_cleaning_path, 'r') as f:
+            text_for_metadata = f.read()
 
-    metadata = {}
+        metadata = {}
 
-    # 1. Get Title (sequentially, as it's a single call with custom logic)
-    title = None
-    match = re.search(r"The title of todays sermon is (.*?)[\.\n]", text_for_metadata, re.IGNORECASE)
-    if match:
-        title = match.group(1).strip()
-    else:
-        logger.info("Generating 'title'...")
-        prompt = f"Please provide a single, concise, and suitable title for the following text. Do not include any introductory phrases or bullet points. Just the title itself.\n\n---\n\n{text_for_metadata}"
-        title = _call_gemini(prompt)
-    metadata['title'] = title
+        # 1. Get Title (sequentially, as it's a single call with custom logic)
+        title = None
+        match = re.search(r"The title of todays sermon is (.*?)[\.\n]", text_for_metadata, re.IGNORECASE)
+        if match:
+            title = match.group(1).strip()
+        else:
+            logger.info("Generating 'title'...")
+            prompt = f"Please provide a single, concise, and suitable title for the following text. Do not include any introductory phrases or bullet points. Just the title itself.\n\n---\n\n{text_for_metadata}"
+            title = _call_gemini(prompt)
+        metadata['title'] = title
 
-    # 2. Get other metadata fields in parallel
-    fields_to_generate = {
-        "thesis": "a concise thesis statement",
-        "outline": "a structured outline",
-        "summary": "a brief summary"
-    }
+        # 2. Get other metadata fields sequentially
+        fields_to_generate = {
+            "thesis": "a concise thesis statement",
+            "outline": "a structured outline",
+            "summary": "a brief summary"
+        }
 
-    # Helper function to be executed in each thread
-    def _generate_field(field, description):
-        logger.info(f"Generating '{field}'...")
-        prompt = f"Please generate {description} for the following text:\n\n---\n\n{text_for_metadata}"
-        try:
-            result = _call_gemini(prompt)
-            return field, result
-        except RuntimeError as e:
-            logger.error(f"Error generating '{field}': {e}")
-            return field, f"Error generating '{field}'."
+        for field, description in fields_to_generate.items():
+            logger.info(f"Generating '{field}'...")
+            prompt = f"Please generate {description} for the following text:\n\n---\n\n{text_for_metadata}"
+            try:
+                result = _call_gemini(prompt)
+                metadata[field] = result
+            except RuntimeError as e:
+                logger.error(f"Error generating '{field}': {e}")
+                metadata[field] = f"Error generating '{field}'."
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(fields_to_generate)) as executor:
-        # Submit all tasks to the thread pool
-        future_to_field = {executor.submit(_generate_field, field, desc): field for field, desc in fields_to_generate.items()}
+        # 3. Write to file as JSON
+        metadata_path = Path(tp.raw_transcript_path).with_suffix('.meta.txt')
+        with open(metadata_path, 'w') as f:
+            json.dump(metadata, f, indent=4)
 
-        # Process results as they complete
-        for future in concurrent.futures.as_completed(future_to_field):
-            field, result = future.result()
-            metadata[field] = result
-
-    # 3. Write to file as JSON
-    metadata_path = Path(tp.raw_transcript_path).with_suffix('.meta.txt')
-    with open(metadata_path, 'w') as f:
-        json.dump(metadata, f, indent=4)
-
-    tp.metadata_path = str(metadata_path)
-
+        tp.metadata_path = str(metadata_path)
 def gen_metadata(transcript_processing_id, current_index=None, total_count=None, stop_processing_flag=None):
     """
     Public-facing function for the metadata generation stage.
@@ -596,7 +585,7 @@ def run_automated_paragraph_editing():
             
             if not paragraphs_data:
                 paragraphs_data = editor._build_paragraphs_json_data(transcript_text, outline_data)
-                editor._save_paragraphs_to_file(paragraphs_data, paragraph_file_path, threading.Lock())
+                editor._save_paragraphs_to_file(paragraphs_data, paragraph_file_path)
 
             # 4. Start the editing process
             edited_transcript = editor.edit_paragraphs(paragraphs_data, paragraph_file_path)
@@ -734,21 +723,17 @@ class EditParagraphs:
         # build json file detaining the differences
         pass
 
-    def _save_paragraphs_to_file(self, data, file_path, lock):
-        """Saves the paragraph data to the JSON file in a thread-safe manner."""
-        with lock:
-            try:
-                with open(file_path, 'w') as f:
-                    json.dump(data, f, indent=4)
-            except Exception as e:
-                logger.error(f"Failed to save progress to {file_path}: {e}")
+    def _save_paragraphs_to_file(self, data, file_path):
+        """Saves the paragraph data to the JSON file."""
+        try:
+            with open(file_path, 'w') as f:
+                json.dump(data, f, indent=4)
+        except Exception as e:
+            logger.error(f"Failed to save progress to {file_path}: {e}")
 
     def edit_paragraphs(self, paragraphs_data, paragraph_file_path):
         """Processes paragraphs that need editing and saves progress intermittently."""
         
-        file_lock = threading.Lock()
-        stop_event = threading.Event()
-
         # Filter to get only the paragraphs that need editing
         paragraphs_to_process = [p for p in paragraphs_data if p.get('edited') is None]
         num_to_process = len(paragraphs_to_process)
@@ -759,27 +744,23 @@ class EditParagraphs:
             edited_transcript = "\n\n".join(p.get('edited', p.get('original', '')) for p in paragraphs_data)
             return edited_transcript
 
-        logger.info(f"Starting parallel processing of {num_to_process} remaining paragraphs with 10 threads...")
+        logger.info(f"Starting sequential processing of {num_to_process} remaining paragraphs...")
         
-        def _process_paragraph_worker(paragraph_item):
-            """Worker function to process a single paragraph."""
-            if stop_event.is_set():
-                return
-
+        for i, paragraph_item in enumerate(paragraphs_to_process):
             index = paragraph_item.get('index')
             prompt = paragraph_item.get('prompt')
             original_paragraph = paragraph_item.get('original')
 
+            logger.info(f"Processing paragraph {index + 1}/{len(paragraphs_data)} ({i + 1}/{num_to_process} in this run).")
+
             if not prompt:
                 logger.warning(f"No prompt for paragraph {index}. Using original.")
                 paragraph_item['edited'] = original_paragraph
-                self._save_paragraphs_to_file(paragraphs_data, paragraph_file_path, file_lock)
-                return
+                self._save_paragraphs_to_file(paragraphs_data, paragraph_file_path)
+                continue
 
             max_retries = 3
             for attempt in range(max_retries):
-                if stop_event.is_set():
-                    return
                 try:
                     edited_text = _call_gemini(prompt, timeout=300)
                     if attempt > 0:
@@ -788,38 +769,19 @@ class EditParagraphs:
                     # Update the shared data structure
                     paragraph_item['edited'] = edited_text
                     # Save progress
-                    self._save_paragraphs_to_file(paragraphs_data, paragraph_file_path, file_lock)
-                    return
+                    self._save_paragraphs_to_file(paragraphs_data, paragraph_file_path)
+                    break # Exit retry loop on success
 
                 except GeminiQuotaExceededError as e:
                     logger.critical(f"!!! CRITICAL: Gemini API quota hit. Halting all editing. Error: {e}.")
-                    stop_event.set()
-                    return
+                    return None # Stop editing and return early
 
                 except RuntimeError as e:
                     logger.warning(f"Attempt {attempt + 1}/{max_retries} failed for paragraph {index}: {e}")
                     if attempt == max_retries - 1:
                         logger.error(f"All {max_retries} attempts failed for paragraph {index}. Original will be used implicitly (edited=None).")
-                        return
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            futures = {}
-            for i, p in enumerate(paragraphs_to_process):
-                futures[executor.submit(_process_paragraph_worker, p)] = p
-                # Add a small random delay between spawning threads
-                if i < len(paragraphs_to_process) - 1: # Don't delay after the last one
-                    delay = random.uniform(1.0, 3.0)
-                    logger.debug(f"Waiting for {delay:.2f} seconds before spawning next thread.")
-                    time.sleep(delay)
-
-            for i, future in enumerate(concurrent.futures.as_completed(futures)):
-                paragraph_item = futures[future]
-                try:
-                    future.result()  # Raise exceptions if any
-                    logger.info(f"Completed processing for paragraph {paragraph_item['index'] + 1}/{len(paragraphs_data)} ({i + 1}/{num_to_process} in this run). Progress saved.")
-                except Exception as exc:
-                    logger.error(f"Paragraph {paragraph_item['index']} generated an exception: {exc}")
-
+                        # No break here, allows loop to finish without setting 'edited'
+                        
         logger.info("Paragraph processing run complete.")
         
         # Final reassembly of the transcript
