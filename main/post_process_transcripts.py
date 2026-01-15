@@ -1,9 +1,11 @@
 from tkinter import E
+from joshlib.ollama import OllamaClient
 import db
 import math, re, json, os
 from pathlib import Path
 import subprocess
 from sqlalchemy import or_
+# from main import ollama_client
 from utils import get_video_paths
 from logger import setup_logger
 import time
@@ -16,37 +18,6 @@ class GeminiQuotaExceededError(Exception):
     pass
 
 # --- Helper Functions ---
-
-def _call_gemini(prompt, timeout=300): # Add timeout parameter with a default of 5 minutes
-    """Runs the Gemini CLI with a given prompt, handling quota errors and timeouts."""
-    env = os.environ.copy()
-    # Removed: env['NO_BROWSER'] = 'true'
-    
-    logger.debug(f"Sending prompt to Gemini CLI...")
-    try:
-        result = subprocess.run(
-            ["gemini", "-p", prompt],
-            capture_output=True,
-            text=True,
-            check=False,
-            env=env,
-            timeout=timeout  # Add timeout to the subprocess call
-        )
-    except subprocess.TimeoutExpired as e:
-        logger.error(f"Gemini CLI command timed out after {timeout} seconds. Error: {e}")
-        # Re-raise as a RuntimeError to be caught by the worker's error handling
-        raise RuntimeError(f"Gemini CLI timed out.") from e
-
-    if result.returncode != 0:
-        error_message = result.stderr.strip()
-        logger.error(f"Gemini CLI error. Return Code: {result.returncode}, Stderr: {error_message}")
-        if "quota" in error_message.lower() or "limit" in error_message.lower():
-            raise GeminiQuotaExceededError(f"Gemini API quota exceeded: {error_message}")
-        else:
-            raise RuntimeError(f"Gemini CLI error: {error_message}")
-            
-    logger.debug("Gemini call successful.")
-    return result.stdout.strip()
 
 def _get_video_duration_str(db_session, video_id):
     """Fetches and formats the trimmed duration of a video."""
@@ -88,17 +59,17 @@ def _execute_processing_stage(transcript_processing_id, stage_logic_func, succes
         db_session.commit()
         logger.info(f"{stage_name} complete for transcript: {tp.id}")
 
-    except GeminiQuotaExceededError as e:
-        logger.critical(f"!!! CRITICAL: Gemini API quota hit during {stage_name} for transcript {transcript_processing_id}. Stopping further LLM processing. Error: {e}")
+    except OllamaProcessingError as e:
+        logger.critical(f"!!! CRITICAL: Ollama API processing issue during {stage_name} for transcript {transcript_processing_id}. Stopping further LLM processing. Error: {e}")
         if stop_processing_flag is not None:
             stop_processing_flag[0] = True
         if db_session.is_active:
             db_session.rollback()
         if tp:
-            tp.status = f"{stage_name.lower().replace(' ', '_')}_quota_exceeded"
+            tp.status = f"{stage_name.lower().replace(' ', '_')}_ollama_failed"
             db_session.commit()
         # Re-raise to stop current transcript's processing
-        raise RuntimeError(f"Processing halted due to Gemini API quota.") from e
+        raise RuntimeError(f"Processing halted due to Ollama API processing issue.") from e
     except Exception as e:
         logger.error(f"Error during {stage_name} for transcript {transcript_processing_id}: {e}")
         if db_session.is_active:
@@ -165,7 +136,7 @@ def _secondary_cleaning_logic(tp, db_session):
         logger.info(f"Secondary cleaning attempt {attempt + 1}/{max_retries} for transcript {tp.id}...")
         
         # Call the LLM to add paragraph breaks
-        cleaned_text = _call_gemini(prompt)
+        cleaned_text = ollama_processor.call_ollama(prompt)
 
         # Calculate cleaned text word count
         cleaned_word_count = len(cleaned_text.split())
@@ -207,49 +178,50 @@ def secondary_cleaning(transcript_processing_id, current_index=None, total_count
         stop_processing_flag=stop_processing_flag
     )
 
-    def _gen_metadata_logic(tp, db_session):
-        """
-        Logic for the metadata generation stage, processing fields sequentially.
-        """
-        with open(tp.secondary_cleaning_path, 'r') as f:
-            text_for_metadata = f.read()
+def _gen_metadata_logic(tp, db_session):
+    """
+    Logic for the metadata generation stage, processing fields sequentially.
+    """
+    with open(tp.secondary_cleaning_path, 'r') as f:
+        text_for_metadata = f.read()
 
-        metadata = {}
+    metadata = {}
 
-        # 1. Get Title (sequentially, as it's a single call with custom logic)
-        title = None
-        match = re.search(r"The title of todays sermon is (.*?)[\.\n]", text_for_metadata, re.IGNORECASE)
-        if match:
-            title = match.group(1).strip()
-        else:
-            logger.info("Generating 'title'...")
-            prompt = f"Please provide a single, concise, and suitable title for the following text. Do not include any introductory phrases or bullet points. Just the title itself.\n\n---\n\n{text_for_metadata}"
-            title = _call_gemini(prompt)
-        metadata['title'] = title
+    # 1. Get Title (sequentially, as it's a single call with custom logic)
+    title = None
+    match = re.search(r"The title of todays sermon is (.*?)[\.\n]", text_for_metadata, re.IGNORECASE)
+    if match:
+        title = match.group(1).strip()
+    else:
+        logger.info("Generating 'title'...")
+        prompt = f"Please provide a single, concise, and suitable title for the following text. Do not include any introductory phrases or bullet points. Just the title itself.\n\n---\n\n{text_for_metadata}"
+        title = ollama_processor.call_ollama(prompt)
+    metadata['title'] = title
 
-        # 2. Get other metadata fields sequentially
-        fields_to_generate = {
-            "thesis": "a concise thesis statement",
-            "outline": "a structured outline",
-            "summary": "a brief summary"
-        }
+    # 2. Get other metadata fields sequentially
+    fields_to_generate = {
+        "thesis": "a concise thesis statement",
+        "outline": "a structured outline",
+        "summary": "a brief summary"
+    }
 
-        for field, description in fields_to_generate.items():
-            logger.info(f"Generating '{field}'...")
-            prompt = f"Please generate {description} for the following text:\n\n---\n\n{text_for_metadata}"
-            try:
-                result = _call_gemini(prompt)
-                metadata[field] = result
-            except RuntimeError as e:
-                logger.error(f"Error generating '{field}': {e}")
-                metadata[field] = f"Error generating '{field}'."
+    for field, description in fields_to_generate.items():
+        logger.info(f"Generating '{field}'...")
+        prompt = f"Please generate {description} for the following text:\n\n---\n\n{text_for_metadata}"
+        try:
+            result = ollama_processor.call_ollama(prompt)
+            metadata[field] = result
+        except RuntimeError as e:
+            logger.error(f"Error generating '{field}': {e}")
+            metadata[field] = f"Error generating '{field}'."
 
-        # 3. Write to file as JSON
-        metadata_path = Path(tp.raw_transcript_path).with_suffix('.meta.txt')
-        with open(metadata_path, 'w') as f:
-            json.dump(metadata, f, indent=4)
+    # 3. Write to file as JSON
+    metadata_path = Path(tp.raw_transcript_path).with_suffix('.meta.txt')
+    with open(metadata_path, 'w') as f:
+        json.dump(metadata, f, indent=4)
 
-        tp.metadata_path = str(metadata_path)
+    tp.metadata_path = str(metadata_path)
+
 def gen_metadata(transcript_processing_id, current_index=None, total_count=None, stop_processing_flag=None):
     """
     Public-facing function for the metadata generation stage.
@@ -353,15 +325,15 @@ def _llm_book_cleanup_logic(tp, db_session):
         try:
             # 2a. Disfluency Removal
             prompt_disfluency = f"Please remove filler words like 'um', 'ah', and 'you know' from the following text:\n\n{chunk}"
-            cleaned_chunk = _call_gemini(prompt_disfluency)
+            cleaned_chunk = ollama_processor.call_ollama(prompt_disfluency)
 
             # 2b. Grammar Correction
             prompt_grammar = f"Please correct any grammar and spelling errors in the following text:\n\n{cleaned_chunk}"
-            cleaned_chunk = _call_gemini(prompt_grammar)
+            cleaned_chunk = ollama_processor.call_ollama(prompt_grammar)
 
             # 2c. Stylistic Enhancement
             prompt_style = f"Please improve the flow, clarity, and sentence structure of the following text to make it suitable for a book:\n\n{cleaned_chunk}"
-            cleaned_chunk = _call_gemini(prompt_style)
+            cleaned_chunk = ollama_processor.call_ollama(prompt_style)
 
             cleaned_chunks.append(cleaned_chunk)
         except RuntimeError as e:
@@ -434,6 +406,7 @@ def update_metadata_file(transcript_processing_id):
     )
 
 import sermon_exporter # Add this import
+import argparse # Add this import
 
 # ... existing code ...
 
@@ -458,6 +431,40 @@ def export_sermon_file(transcript_processing_id, current_index=None, total_count
         total_count=total_count,
         stop_processing_flag=stop_processing_flag
     )
+
+def reset_transcript_status(transcript_id, db_session):
+    """
+    Resets the status of a transcript and its associated video in the database.
+    This function does NOT delete any files.
+    """
+    logger.info(f"--- Resetting status for transcript ID: {transcript_id} ---")
+
+    transcript = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.id == transcript_id).first()
+    if not transcript:
+        logger.error(f"No transcript processing entry found with id: {transcript_id}")
+        return
+
+    # Reset status on TranscriptProcessing
+    transcript.book_ready_path = None
+    transcript.final_pass_path = None
+    transcript.metadata_path = None
+    transcript.initial_cleaning_path = None
+    transcript.secondary_cleaning_path = None
+    transcript.python_scrub_path = None 
+    transcript.status = "raw_transcript_received"
+
+    # Also reset status on the Video table
+    video = db_session.query(db.Video).filter(db.Video.id == transcript.video_id).first()
+    if video:
+        logger.info(f"Resetting video status for video ID: {video.id}")
+        video.stage_4_status = "pending"
+        video.stage_5_status = "pending"
+        video.stage_6_status = "pending"
+    else:
+        logger.error(f"Could not find matching video for transcript ID: {transcript_id}")
+    
+    db_session.commit()
+    logger.info(f"Transcript ID: {transcript_id} has been reset and is ready for reprocessing.")
 
 # --- Main Orchestration ---
 
@@ -620,6 +627,8 @@ class EditParagraphs:
     def __init__(self):
         """A class to handle paragraph-by-paragraph editing of a sermon."""
         self.sermon_selected = False # This can be used to track state if needed
+        self.ollama_client = OllamaClient()
+
 
     def select_sermon(self):
         """Selects and returns a list of sermon objects for editing."""
@@ -640,7 +649,18 @@ class EditParagraphs:
             for sermon in sermons:
                 logger.info(f"ID: {sermon.id}, Status: {sermon.status}, Path: {sermon.raw_transcript_path}")
 
-            selected_id_str = input("Enter the ID of the sermon you want to edit (or 'all' to process all): ")
+            selected_id_str = input("Enter the ID of the sermon you want to edit (or 'all' to process all, or 'reset <ID>', or 'reset all'): ")
+            
+            if selected_id_str.lower() == 'reset all':
+                return self._reset_all_sermons_editing_state()
+
+            if selected_id_str.lower().startswith('reset '):
+                try:
+                    reset_id = int(selected_id_str.split(' ')[1])
+                    return self._reset_sermon_editing_state(reset_id) # Return a flag for reset action
+                except (ValueError, IndexError):
+                    logger.error("Invalid reset command. Use 'reset <ID>'.")
+                    return []
             
             if selected_id_str.lower() == 'all':
                 return sermons
@@ -654,12 +674,71 @@ class EditParagraphs:
                     logger.info(f"No sermon found with ID: {selected_id}")
                     return []
             except ValueError:
-                logger.error("Invalid input. Please enter a number or 'all'.")
+                logger.error("Invalid input. Please enter a number, 'all', or 'reset <ID>'.")
                 return []
 
         except Exception as e:
             logger.error(f"An unexpected error occurred in select_sermon: {e}")
             return []
+        finally:
+            session.close()
+
+    def _reset_sermon_editing_state(self, sermon_id):
+        """Resets the editing state for a given sermon."""
+        session = db.SessionLocal()
+        try:
+            sermon = session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.id == sermon_id).first()
+            if not sermon:
+                logger.info(f"No sermon found with ID: {sermon_id} to reset.")
+                return "RESET_FAILED"
+
+            # Delete paragraphs.json file
+            paragraph_file_path = self._get_paragraph_file_path(sermon)
+            if paragraph_file_path and paragraph_file_path.exists():
+                os.remove(paragraph_file_path)
+                logger.info(f"Deleted {paragraph_file_path} for sermon ID: {sermon_id}")
+            else:
+                logger.info(f"No paragraphs.json found for sermon ID: {sermon_id} at {paragraph_file_path}. Nothing to delete.")
+
+            # Reset status in DB
+            sermon.status = "sermon_export_complete" # Or a custom 'editing_reset' status if desired
+            session.commit()
+            logger.info(f"Reset status of sermon ID: {sermon_id} to 'sermon_export_complete'. It can now be re-edited.")
+            return "RESET_ACTION" # Indicate that a reset occurred
+
+        except Exception as e:
+            logger.error(f"Error resetting sermon ID {sermon_id}: {e}")
+            session.rollback()
+            return "RESET_FAILED"
+        finally:
+            session.close()
+
+    def _reset_all_sermons_editing_state(self):
+        """Resets the editing state for all available sermons."""
+        session = db.SessionLocal()
+        try:
+            sermons_to_reset = session.query(db.TranscriptProcessing).filter(
+                or_(
+                    db.TranscriptProcessing.status == "metadata_generation_complete",
+                    db.TranscriptProcessing.status == "sermon_export_complete"
+                )
+            ).all()
+
+            if not sermons_to_reset:
+                logger.info("No sermons found in a resettable state.")
+                return "RESET_FAILED"
+
+            logger.info(f"Found {len(sermons_to_reset)} sermons to reset.")
+            for sermon in sermons_to_reset:
+                self._reset_sermon_editing_state(sermon.id)
+            
+            logger.info("All available sermons have been reset.")
+            return "RESET_ACTION"
+
+        except Exception as e:
+            logger.error(f"An error occurred while resetting all sermons: {e}")
+            session.rollback()
+            return "RESET_FAILED"
         finally:
             session.close()
 
@@ -762,7 +841,8 @@ class EditParagraphs:
             max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    edited_text = _call_gemini(prompt, timeout=300)
+                    edited_text = self.ollama_client.submit_prompt(prompt)
+                    #ollama_processor.call_ollama(prompt, timeout=300)
                     if attempt > 0:
                         logger.info(f"Successfully processed paragraph {index} on attempt {attempt + 1}.")
                     
@@ -772,8 +852,8 @@ class EditParagraphs:
                     self._save_paragraphs_to_file(paragraphs_data, paragraph_file_path)
                     break # Exit retry loop on success
 
-                except GeminiQuotaExceededError as e:
-                    logger.critical(f"!!! CRITICAL: Gemini API quota hit. Halting all editing. Error: {e}.")
+                except OllamaProcessingError as e:
+                    logger.critical(f"!!! CRITICAL: Ollama API processing issue. Halting all editing. Error: {e}.")
                     return None # Stop editing and return early
 
                 except RuntimeError as e:
@@ -800,15 +880,94 @@ class EditParagraphs:
         """Orchestrates the sermon editing process for one or more sermons with resumability."""
         sermons_to_process = self.select_sermon()
 
+        if sermons_to_process in ["RESET_ACTION", "RESET_FAILED"]:
+            logger.info("Sermon editing state reset or failed. Aborting further editing.")
+            return
         if not sermons_to_process:
-            logger.info("No sermons selected. Aborting.")
+            logger.info("No sermons selected for editing. Aborting.")
             return
 
+        # Since run_editor can process one or more sermons, we loop through them.
+        # We will return the text of the *last* processed sermon for printing.
+        final_edited_text = None
+        session = db.SessionLocal()
+        
+        try:
+            for i, sermon in enumerate(sermons_to_process):
+                logger.info(f"--- Processing Sermon {i+1}/{len(sermons_to_process)} (ID: {sermon.id}) ---")
+
+                # 1. Retrieve sermon text
+                if not sermon.secondary_cleaning_path or not Path(sermon.secondary_cleaning_path).exists():
+                    logger.error(f"Secondary cleaning path not found for sermon ID: {sermon.id}. Skipping.")
+                    continue
+                with open(sermon.secondary_cleaning_path, 'r') as f:
+                    transcript_text = f.read()
+
+                # 2. Retrieve outline from metadata
+                outline_data = ""
+                if sermon.metadata_path and Path(sermon.metadata_path).exists():
+                    with open(sermon.metadata_path, 'r') as f:
+                        metadata = json.load(f)
+                        outline_data = metadata.get('outline', '')
+
+                # 3. Prepare paragraph data
+                paragraph_file_path = self._get_paragraph_file_path(sermon)
+                paragraphs_data = None
+                if paragraph_file_path.exists():
+                    with open(paragraph_file_path, 'r') as f:
+                        paragraphs_data = json.load(f)
+                
+                if not paragraphs_data:
+                    paragraphs_data = self._build_paragraphs_json_data(transcript_text, outline_data)
+                    self._save_paragraphs_to_file(paragraphs_data, paragraph_file_path)
+
+                # 4. Start the editing process
+                edited_transcript = self.edit_paragraphs(paragraphs_data, paragraph_file_path)
+
+                if edited_transcript:
+                    final_transcript_path = Path(sermon.raw_transcript_path).with_suffix('.edited.txt')
+                    with open(final_transcript_path, 'w') as f:
+                        f.write(edited_transcript)
+                    logger.info(f"Successfully saved final edited transcript to: {final_transcript_path}")
+                    
+                    # 5. Update status
+                    # Re-fetch the sermon object within this session to avoid detached instance error
+                    sermon_in_session = session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.id == sermon.id).first()
+                    if sermon_in_session:
+                        sermon_in_session.status = 'final_edit_complete'
+                        session.commit()
+                        logger.info(f"Updated status to 'final_edit_complete' for sermon {sermon.id}")
+                    
+                    final_edited_text = edited_transcript # Keep track of the last edited text
+                else:
+                    logger.error(f"Editing failed for sermon {sermon.id}. No transcript was returned.")
+                
+                return final_edited_text
+
+        except Exception as e:
+            logger.error(f"An unexpected error occurred during automated editing: {e}")
+            session.rollback()
+        finally:
+            session.close()
+        
 
 if __name__ == "__main__":
-    # TODO: build some kind of llm check to compare the raw and the edited versions? maybe use ollama?? 
-    # TODO: add option to save edited transcript back to DB/file system
-    editor = EditParagraphs()
-    edited_text = editor.run_editor()
-    print("\n--- Edited Sermon Transcript ---\n")
-    print(edited_text)
+    parser = argparse.ArgumentParser(description="Manage transcript post-processing.")
+    parser.add_argument("--reset", type=int, help="Reset the processing status for a given transcript ID.")
+
+    args = parser.parse_args()
+
+    if args.reset:
+        session = db.SessionLocal()
+        try:
+            reset_transcript_status(args.reset, session)
+        finally:
+            session.close()
+    else:
+        # Existing main execution for EditParagraphs, if any
+        # TODO: build some kind of llm check to compare the raw and the edited versions? maybe use ollama?? 
+        # TODO: add option to save edited transcript back to DB/file system
+        editor = EditParagraphs()
+        edited_text = editor.run_editor()
+        print("\n--- Edited Sermon Transcript ---\n")
+        print(edited_text)

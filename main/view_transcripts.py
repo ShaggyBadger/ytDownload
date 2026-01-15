@@ -1,6 +1,6 @@
 from db import SessionLocal, TranscriptProcessing, Video
+import os # Keep os for Path usage in _get_paragraph_file_path if needed
 from pathlib import Path
-import os
 import post_process_transcripts
 from logger import setup_logger
 
@@ -86,7 +86,7 @@ def display_transcript_files(transcript):
     while True:
         logger.info("What would you like to do?")
         logger.info("1: Run the book cleanup process")
-        logger.info("2: Delete and reset this transcript")
+        logger.info("2: Reset this transcript")
         logger.info("q: Quit")
         choice = input("Enter your choice: ")
         logger.info(f"User choice: {choice}")
@@ -101,11 +101,11 @@ def display_transcript_files(transcript):
             db = SessionLocal()
             try:
                 # Re-fetch the transcript object in the new session
-                transcript_to_delete = db.query(TranscriptProcessing).filter(TranscriptProcessing.id == transcript.id).first()
-                if transcript_to_delete:
-                    delete_and_reset_transcript(transcript_to_delete, db)
+                transcript_to_reset = db.query(TranscriptProcessing).filter(TranscriptProcessing.id == transcript.id).first()
+                if transcript_to_reset:
+                    post_process_transcripts.reset_transcript_status(transcript_to_reset.id, db)
                 else:
-                    logger.error(f"Could not find transcript with ID: {transcript.id} to delete.")
+                    logger.error(f"Could not find transcript with ID: {transcript.id} to reset.")
             finally:
                 db.close()
             break
@@ -117,7 +117,7 @@ def display_transcript_files(transcript):
 
 def reset_all_transcripts():
     """
-    Deletes all processed files for all transcripts and resets their status.
+    Resets the status of all transcripts in the database.
     """
     db = SessionLocal()
     try:
@@ -126,59 +126,16 @@ def reset_all_transcripts():
             logger.info("No transcripts to reset.")
             return
         
-        confirm = input(f"Are you sure you want to reset all {len(transcripts)} transcripts? This is irreversible. (y/n): ")
+        confirm = input(f"Are you sure you want to reset all {len(transcripts)} transcripts? (y/n): ")
         if confirm.lower() != 'y':
             logger.info("Reset cancelled.")
             return
 
         for transcript in transcripts:
-            delete_and_reset_transcript(transcript, db)
+            post_process_transcripts.reset_transcript_status(transcript.id, db)
         
         logger.info(f"--- All {len(transcripts)} transcripts have been reset. ---")
 
     finally:
         db.close()
 
-
-def delete_and_reset_transcript(transcript, db):
-    """
-    Deletes the processed files for a transcript and resets its status.
-    """
-    logger.info(f"--- Resetting transcript ID: {transcript.id} ---")
-
-    files_to_delete = [
-        transcript.book_ready_path,
-        transcript.final_pass_path,
-        transcript.metadata_path,
-        transcript.initial_cleaning_path,
-        transcript.secondary_cleaning_path
-    ]
-
-    for file_path in files_to_delete:
-        if file_path and Path(file_path).exists():
-            try:
-                os.remove(file_path)
-                logger.info(f"Deleted file: {file_path}")
-            except OSError as e:
-                logger.error(f"Error deleting file {file_path}: {e}")
-
-    # Reset paths and status on TranscriptProcessing
-    transcript.book_ready_path = None
-    transcript.final_pass_path = None
-    transcript.metadata_path = None
-    transcript.initial_cleaning_path = None
-    transcript.secondary_cleaning_path = None
-    transcript.status = "raw_transcript_received"
-
-    # Also reset status on the Video table
-    video = db.query(Video).filter(Video.id == transcript.video_id).first()
-    if video:
-        logger.info(f"Resetting video status for video ID: {video.id}")
-        video.stage_4_status = "pending"
-        video.stage_5_status = "pending"
-        video.stage_6_status = "pending"
-    else:
-        logger.error(f"Could not find matching video for transcript ID: {transcript.id}")
-    
-    db.commit()
-    logger.info(f"Transcript ID: {transcript.id} has been reset and is ready for reprocessing.")

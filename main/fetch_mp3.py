@@ -4,6 +4,7 @@ from utils import get_video_paths
 from pydub import AudioSegment
 from pathlib import Path
 from logger import setup_logger
+import time
 
 logger = setup_logger(__name__)
 
@@ -88,7 +89,8 @@ def process_selected_videos(videos_to_process):
                 if d['status'] == 'started':
                     logger.info(f"Post-processing: {d['postprocessor']}...")
                 if d['status'] == 'finished':
-                    logger.info("Post-processing complete.")
+                    logger.info("Post-processing complete. Pausing for 2 seconds...")
+                    time.sleep(2)
             # ------------------------
 
             # Download
