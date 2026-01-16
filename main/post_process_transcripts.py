@@ -1,5 +1,5 @@
 from tkinter import E
-from joshlib.ollama import OllamaClient
+from joshlib.ollama import OllamaClient, OllamaProcessingError
 import db
 import math, re, json, os
 from pathlib import Path
@@ -11,6 +11,7 @@ from logger import setup_logger
 import time
 
 logger = setup_logger(__name__)
+ollama_processor = OllamaClient()
 
 # --- Custom Exceptions ---
 class GeminiQuotaExceededError(Exception):
@@ -19,13 +20,41 @@ class GeminiQuotaExceededError(Exception):
 
 # --- Helper Functions ---
 
-def _get_video_duration_str(db_session, video_id):
-    """Fetches and formats the trimmed duration of a video."""
-    video = db_session.query(db.Video).filter(db.Video.id == video_id).first()
-    if video and video.end_time and video.start_time:
-        duration = video.end_time - video.start_time
-        return f"{duration // 60} minutes, {duration % 60} seconds"
-    return "Unknown"
+def _call_gemini(prompt, retries=3, delay=5):
+    """
+    Calls the Gemini CLI with the given prompt, with retry logic.
+    """
+    for attempt in range(retries):
+        try:
+            # Note: The path to the gemini executable should be in the system's PATH
+            process = subprocess.run(['gemini', prompt], capture_output=True, text=True, check=True)
+            
+            # Check for quota error message in stderr, even if process exits successfully
+            if "quota" in process.stderr.lower():
+                raise GeminiQuotaExceededError(f"Gemini API quota exceeded: {process.stderr}")
+
+            return process.stdout.strip()
+
+        except FileNotFoundError:
+            logger.error("Error: 'gemini' command not found. Make sure the Gemini CLI is installed and in your PATH.")
+            raise RuntimeError("Gemini CLI not found.")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Gemini CLI call failed with exit code {e.returncode}:")
+            logger.error(f"STDOUT: {e.stdout}")
+            logger.error(f"STDERR: {e.stderr}")
+            if "quota" in e.stderr.lower():
+                raise GeminiQuotaExceededError(f"Gemini API quota exceeded: {e.stderr}")
+            if attempt < retries - 1:
+                logger.info(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
+            else:
+                raise RuntimeError(f"Gemini CLI call failed after {retries} attempts.")
+        except GeminiQuotaExceededError as e:
+            # Re-raise the specific quota error to be handled by the calling function
+            raise e
+        except Exception as e:
+            logger.error(f"An unexpected error occurred during Gemini CLI call: {e}")
+            raise RuntimeError(f"An unexpected error occurred: {e}")
 
 # --- Centralized Processing Logic ---
 
@@ -59,17 +88,18 @@ def _execute_processing_stage(transcript_processing_id, stage_logic_func, succes
         db_session.commit()
         logger.info(f"{stage_name} complete for transcript: {tp.id}")
 
-    except OllamaProcessingError as e:
-        logger.critical(f"!!! CRITICAL: Ollama API processing issue during {stage_name} for transcript {transcript_processing_id}. Stopping further LLM processing. Error: {e}")
+    except (GeminiQuotaExceededError, OllamaProcessingError) as e:
+        model_name = "Gemini" if isinstance(e, GeminiQuotaExceededError) else "Ollama"
+        logger.critical(f"!!! CRITICAL: {model_name} API processing issue during {stage_name} for transcript {transcript_processing_id}. Stopping further LLM processing. Error: {e}")
         if stop_processing_flag is not None:
             stop_processing_flag[0] = True
         if db_session.is_active:
             db_session.rollback()
         if tp:
-            tp.status = f"{stage_name.lower().replace(' ', '_')}_ollama_failed"
+            tp.status = f"{stage_name.lower().replace(' ', '_')}_{model_name.lower()}_failed"
             db_session.commit()
         # Re-raise to stop current transcript's processing
-        raise RuntimeError(f"Processing halted due to Ollama API processing issue.") from e
+        raise RuntimeError(f"Processing halted due to {model_name} API processing issue.") from e
     except Exception as e:
         logger.error(f"Error during {stage_name} for transcript {transcript_processing_id}: {e}")
         if db_session.is_active:
@@ -129,14 +159,13 @@ def _secondary_cleaning_logic(tp, db_session):
     # Create a prompt for the LLM
     prompt = f"Please add paragraph breaks to the following text:\n\n{initial_text}"
 
-    text_to_save = initial_text  # Default to initial text
     max_retries = 3
 
     for attempt in range(max_retries):
         logger.info(f"Secondary cleaning attempt {attempt + 1}/{max_retries} for transcript {tp.id}...")
         
         # Call the LLM to add paragraph breaks
-        cleaned_text = ollama_processor.call_ollama(prompt)
+        cleaned_text = _call_gemini(prompt)
 
         # Calculate cleaned text word count
         cleaned_word_count = len(cleaned_text.split())
@@ -148,21 +177,22 @@ def _secondary_cleaning_logic(tp, db_session):
 
         if word_loss_percentage <= 2.0: # 2% threshold
             logger.info(f"Secondary cleaning word count change: {word_loss_percentage:.2f}%. Acceptable.")
-            text_to_save = cleaned_text
-            break  # Exit loop on success
+            
+            # Write the successful text to a new file
+            secondary_cleaning_path = Path(tp.raw_transcript_path).with_suffix('.secondary.txt')
+            with open(secondary_cleaning_path, 'w') as f:
+                f.write(cleaned_text)
+
+            # Update the database
+            tp.secondary_cleaning_path = str(secondary_cleaning_path)
+            return # Success, exit the function
+
         else:
             logger.warning(f"Warning: Attempt {attempt + 1} resulted in a {word_loss_percentage:.2f}% word count loss. Retrying...")
 
-        if attempt == max_retries - 1:
-            logger.warning(f"Warning: All {max_retries} secondary cleaning attempts resulted in high word count loss for transcript {tp.id}. Falling back to initial text.")
-
-    # Write the chosen text to a new file
-    secondary_cleaning_path = Path(tp.raw_transcript_path).with_suffix('.secondary.txt')
-    with open(secondary_cleaning_path, 'w') as f:
-        f.write(text_to_save)
-
-    # Update the database
-    tp.secondary_cleaning_path = str(secondary_cleaning_path)
+    # This part is only reached if all retries fail
+    logger.error(f"All {max_retries} secondary cleaning attempts resulted in high word count loss for transcript {tp.id}. Halting processing for this transcript.")
+    raise RuntimeError(f"Failed to get acceptable paragraphing from Gemini after {max_retries} attempts.")
 
 def secondary_cleaning(transcript_processing_id, current_index=None, total_count=None, stop_processing_flag=None):
     """
@@ -195,7 +225,7 @@ def _gen_metadata_logic(tp, db_session):
     else:
         logger.info("Generating 'title'...")
         prompt = f"Please provide a single, concise, and suitable title for the following text. Do not include any introductory phrases or bullet points. Just the title itself.\n\n---\n\n{text_for_metadata}"
-        title = ollama_processor.call_ollama(prompt)
+        title = _call_gemini(prompt)
     metadata['title'] = title
 
     # 2. Get other metadata fields sequentially
@@ -209,7 +239,7 @@ def _gen_metadata_logic(tp, db_session):
         logger.info(f"Generating '{field}'...")
         prompt = f"Please generate {description} for the following text:\n\n---\n\n{text_for_metadata}"
         try:
-            result = ollama_processor.call_ollama(prompt)
+            result = _call_gemini(prompt)
             metadata[field] = result
         except RuntimeError as e:
             logger.error(f"Error generating '{field}': {e}")
@@ -325,15 +355,15 @@ def _llm_book_cleanup_logic(tp, db_session):
         try:
             # 2a. Disfluency Removal
             prompt_disfluency = f"Please remove filler words like 'um', 'ah', and 'you know' from the following text:\n\n{chunk}"
-            cleaned_chunk = ollama_processor.call_ollama(prompt_disfluency)
+            cleaned_chunk = ollama_processor.submit_prompt(prompt_disfluency)
 
             # 2b. Grammar Correction
             prompt_grammar = f"Please correct any grammar and spelling errors in the following text:\n\n{cleaned_chunk}"
-            cleaned_chunk = ollama_processor.call_ollama(prompt_grammar)
+            cleaned_chunk = ollama_processor.submit_prompt(prompt_grammar)
 
             # 2c. Stylistic Enhancement
             prompt_style = f"Please improve the flow, clarity, and sentence structure of the following text to make it suitable for a book:\n\n{cleaned_chunk}"
-            cleaned_chunk = ollama_processor.call_ollama(prompt_style)
+            cleaned_chunk = ollama_processor.submit_prompt(prompt_style)
 
             cleaned_chunks.append(cleaned_chunk)
         except RuntimeError as e:

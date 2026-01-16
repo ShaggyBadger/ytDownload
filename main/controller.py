@@ -9,6 +9,7 @@ import post_process_transcripts
 import view_transcripts
 import sermon_exporter
 import clean_sermon_transcripts
+import reset_sermon
 from db import Base, engine
 import migration
 from logger import setup_logger
@@ -34,6 +35,7 @@ def display_menu():
           "7: Post-process transcripts\n"
           "8: View Transcripts\n"
           "9: Clean Sermon Transcripts up\n"
+          "10: Reset a Sermon's Post-processing\n"
           "q: Quit\n"
           "-----------------")
 
@@ -63,6 +65,8 @@ def main():
             view_transcripts.view_transcripts()
         elif choice == '9':
             clean_sermon_transcripts.clean_sermon_transcripts()
+        elif choice == '10':
+            reset_sermon.choose_and_reset_sermon()
         elif choice.lower() == 'q':
             logger.info("Exiting.")
             break
