@@ -25,7 +25,6 @@ from the context).
 - Fix grammar, punctuation, and awkward phrasing.  
 - Minor tightening is allowed; meaning must remain intact.
 - Ensure sentences begin with a capital letter.
-- Break long paragraphs into two or more paragraphs when a single paragraph would be difficult to follow when read aloud.
 - Each resulting paragraph should represent a coherent spoken thought unit.
 
 **Output Rules:**  
