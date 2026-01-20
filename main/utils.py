@@ -2,6 +2,28 @@ from pathlib import Path
 from db import SessionLocal, Video, TranscriptProcessing
 import os
 import re
+from logger import setup_logger
+
+logger = setup_logger(__name__)
+
+def _get_video_duration_str(db_session, video_id: int) -> str:
+    """
+    Fetches the video duration from the database and formats it as HH:MM:SS.
+    """
+    try:
+        video = db_session.query(Video).filter(Video.id == video_id).first()
+        if not video or video.duration is None:
+            logger.warning(f"Could not find video or duration for video_id {video_id}.")
+            return None
+
+        total_seconds = int(video.duration)
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+
+        return f"{hours:02}:{minutes:02}:{seconds:02}"
+    except Exception as e:
+        logger.error(f"Error fetching video duration for video_id {video_id}: {e}", exc_info=True)
+        return None
 
 def get_video_paths(video: Video):
     """

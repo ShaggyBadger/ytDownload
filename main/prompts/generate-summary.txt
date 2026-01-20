@@ -18,4 +18,4 @@ Output Rules:
 
 Sermon text:
 ---
-{text_for_metadata}
+{SERMON_TEXT}
