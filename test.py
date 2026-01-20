@@ -1,152 +1,43 @@
-import subprocess
-import time
-import requests
-import os
-from dotenv import load_dotenv
-from pathlib import Path
-import paramiko # Added for SSH client
+def condense_text(input_text):
+    # .split() without arguments splits by any whitespace 
+    # and discards empty strings caused by extra spaces/newlines.
+    words = input_text.split()
+    
+    # Rejoin the words with a single space
+    return " ".join(words)
 
-# Load environment variables
-# Assumes .env file is in the 'main' directory
-load_dotenv(Path(__file__).resolve().parent / "main/.env")
+# Example usage:
+raw_text = """
+The New Testament bears witness to them. It is written of Him that He went about doing good, such good, such wonderful good, such extraordinary good, good that none else had ever been able to do.
 
-SSH_HOST = os.getenv("SSH_HOST")
-SSH_USER = os.getenv("SSH_USER")
-SSH_PASSWORD = os.getenv("SSH_PASSWORD") # Keep if needed for paramiko, but SSH command will use keys
-SSH_PORT = os.getenv("SSH_PORT")
+- Think of the honey sweet words of counsel, of comfort, of conviction, of courage that fell from His lips!
+- Think of the mighty miracles of His healing!
+- Think of His unstopping the mouths of the dumb, opening the eyes of the blind, the ears of the deaf!
+- Think of Him stopping and, as someone has said, breaking up every funeral He attended!
 
-# --- Paramiko helper functions (copied from main/desktop_connection_utility.py) ---
-def _make_client():
-    client = paramiko.SSHClient()
-    client.load_system_host_keys()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+Surely the people of His day and time should have fallen at His feet, if for no other reason than because of His works, and cried out, as one did say, "Thou art the Christ, the Son of the living God."
 
-    client.connect(
-        hostname=SSH_HOST,
-        username=SSH_USER,
-        password=SSH_PASSWORD,
-        port=int(SSH_PORT),
-        allow_agent=False,
-        look_for_keys=False,
-        timeout=10,
-    )
-    return client
+Think further of the testimony not only of the New Testament but of history, of secular, non-religious history.
 
-def run_remote_cmd(cmd: str):
-    client = None
-    try:
-        client = _make_client()
-        stdin, stdout, stderr = client.exec_command(cmd)
-        out = stdout.read().decode().strip()
-        err = stderr.read().decode().strip()
-        if err:
-            print(f"[stderr from remote cmd] {err}")
-        return out
-    finally:
-        if client:
-            client.close()
-# --- End of Paramiko helper functions ---
+Listen! I come from a city in Russia named Maghiliev. It is on the Dnieper River. At the time I lived there, it had a population of between 150,000 to 200,000. That was just before 1914. The entire city of more than 150,000 people had one small hospital, one drug stare, two doctors, one assistant doctor. There were four schools - two grade schools, one high school, one junior college. In all the four schools there were not a thousand, certainly not fifteen hundred students. n all the four schools there were not one hundred girls. The majority of the students were boys. Girls were not supposed to get an education.
 
+What was the difference between Russia and the Chicago to which I came? What is the difference between Moghiliev and any city of the United States? People have two feet in Russia, two hands, two eyes, two ears, one nose. They take baths. They sleep. They are married and given in marriage. When you prick them, they bleed. When you poison them, they die. When you hurt them, they weep. What is the difference between Russia and America? I shall tell you.
 
-class SSHTunnel:
-    """A context manager for creating and managing an SSH tunnel."""
-    def __init__(self, remote_host, remote_user, remote_port, local_port, remote_bind_host, remote_bind_port):
-        self.remote_host = remote_host
-        self.remote_user = remote_user
-        self.remote_port = remote_port
-        self.local_port = local_port
-        self.remote_bind_host = remote_bind_host
-        self.remote_bind_port = remote_bind_port
-        self.tunnel_process = None
+In America the Lord JESUS CHRIST has been given a chance. In Russia He had not been up to that time, and of course He is not being given a chance now. I read of a Mohammedan preacher, a follower of Mohammed who had become a Christian. He said that in his country, in Turkey, if he had a choice between being a woman or a donkey, he would be a donkey, because his master would take better care of him than any husband took of his wife.
 
-    def __enter__(self):
-        print("Starting SSH tunnel...")
-        cmd = [
-            "ssh",
-            "-N",  # Do not execute a remote command
-            f"-L", f"{self.local_port}:{self.remote_bind_host}:{self.remote_bind_port}",
-            f"{self.remote_user}@{self.remote_host}",
-            "-p", str(self.remote_port),
-        ]
-        
-        # Using Popen to run the command in the background
-        self.tunnel_process = subprocess.Popen(cmd)
-        
-        # Give the tunnel a moment to establish
-        time.sleep(2) 
-        
-        # Check if the process started successfully
-        if self.tunnel_process.poll() is not None:
-            raise RuntimeError("SSH tunnel failed to start. Check your SSH credentials and connection.")
-            
-        print(f"SSH tunnel established. Local port {self.local_port} is forwarded to {self.remote_bind_host}:{self.remote_bind_port} on {self.remote_host}.")
-        return self
+You dear sisters who are reading this, why are you not in some purdah of the Arabians, of the Turks, of the Hindus? Why are you not circumscribed in your activities? Why can you associate with others, going here, there, and yonder, just as openly as the men? Why do you not wear the veil? What is the difference? Is a Mohammedan woman ugly? Not at all. Is she indecent? Not all. Do they have something so terribly wrong with them, something not found in American women? Of course not. It is simply because you American women have your lives built in the foundation of the Blood of the Lord JESUS CHRIST.
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.tunnel_process:
-            print("Closing SSH tunnel...")
-            self.tunnel_process.terminate()
-            self.tunnel_process.wait()
-            print("SSH tunnel closed.")
+Listen, my friends. When the Anglos and the Saxons were eating each other in the forests of Germany, in cannibalistic orgies, the Chinese were already writing, printing, dressing in silks and satins. Compare England with China today. China, backward, poor China, benighted, forlorn! England, a paragon among the nations!
+What made England? Was it its Shakespeares? Perish the thought! Was it its Miltons? Forget it! What made England? Was it its factories? What made England? Was it its dances, its armies, its navies? No!
 
-def main():
-    """
-    Main function to create a tunnel and query the remote Ollama service.
-    """
-    if not all([SSH_HOST, SSH_USER, SSH_PORT]):
-        print("Error: Please make sure SSH_HOST, SSH_USER, and SSH_PORT are set in your .env file.")
-        return
+Definitely, truly, wholly, entirely, it is the CHRIST of the living GOD! The Gospel was preached in that country while poor China did not have the same chance. May I digress a moment? Far as long as the world stands, England and America, especially America, will never cease paying for the fact that we had the opportunity at China and missed it. China will be a sword at our hearts, a dagger at our throats because of its being taken over by the communists instead of by the Lord JESUS CHRIST.
 
-    try:
-        print(f"Attempting to get WSL IP from remote host '{SSH_HOST}'...")
-        # Get WSL IP from the remote Windows machine by executing the command via its full path
-        wsl_ip_output = run_remote_cmd("/mnt/c/Windows/System32/wsl.exe hostname -I")
-        wsl_ip = wsl_ip_output.split()[0] if wsl_ip_output else None
-        if not wsl_ip:
-            raise ValueError("Could not determine WSL IP address. Is WSL running and `wsl hostname -I` working on the remote machine?")
-        print(f"Detected WSL IP: {wsl_ip}")
+It is the same everywhere you turn. No one who has ever read that matchless story of Queen Victoria can ever forget it. One of her Zulu king subjects came with his mighty retinue from his kraal yonder in Africa to visit her. Taking him into her carriage, as one of her great subjects, she rode him around the city of London to show him the sights of that mighty metropolis. Returning to her palace, she sat down on her throne. The giant Zulu, the black warrior, stood in front of her, leaning on his terrible spear as he spake:
 
-        ollama_port = 11434
-        local_forward_port = 11434
+"White Mother, I shall never dare tell my people what you have showed me this day. They will not believe me! They would kill me for a liar. But, I want to ask you a question that has been bothering me all this day. My people are bigger than your people. My people are as numerous as your people. My people are as strong as your people. I can take any two of your soldiers and break them with these two hands. There is not a man in your kingdom that I have seen that would be a physical match for one of my warriors. Why is it that you are so great and we are so small?"
 
-        with SSHTunnel(
-            remote_host=SSH_HOST,
-            remote_user=SSH_USER,
-            remote_port=int(SSH_PORT),
-            local_port=local_forward_port,
-            remote_bind_host=wsl_ip, # Use the dynamic WSL IP here
-            remote_bind_port=ollama_port
-        ):
-            print("\nAttempting to contact Ollama through the tunnel...")
-            try:
-                resp = requests.post(
-                    f"http://localhost:{local_forward_port}/api/generate",
-                    json={
-                        "model": "llama3.1:8b",
-                        "prompt": "Why is the sky blue?",
-                        "stream": False
-                    },
-                    timeout=120
-                )
-                resp.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
+You recall the answer. GOD bless the memory of that saintly queen! Stepping down from the throne, taking her Bible from a table by the side of the dais, lifting it before the king, she said: "King, this is the secret of the greatness of my empire!" Oh, how I wish someone would tell that to the President of the United States, to the Cabinet in Washington! They all need to know that. They seem to have forgotten this lesson, this testimony of history.
+"""
 
-                print("Response status:", resp.status_code)
-                response_data = resp.json()
-                print("Ollama response:", response_data.get("response", "No response text found."))
-
-            except requests.exceptions.RequestException as e:
-                print(f"\nError communicating with Ollama: {e}")
-                print("Please check the following:")
-                print(f"1. Is the Ollama service running INSIDE WSL on the remote machine ('{SSH_HOST}')?")
-                print(f"2. Is it accessible on {wsl_ip}:{ollama_port} *from INSIDE WSL itself*?")
-                print("3. Do you have the 'llama3.1:8b' model installed on the remote Ollama instance? (`ollama list` inside WSL)")
-                print("4. Is `ssh` working correctly from your local machine to the remote Windows machine?")
-                print("5. Is `wsl hostname -I` working correctly on the remote Windows machine and returning the WSL IP?")
-
-
-    except (RuntimeError, ValueError, paramiko.SSHException, Exception) as e:
-        print(f"\nAn error occurred during tunnel setup or WSL IP retrieval: {e}")
-
-if __name__ == "__main__":
-    main()
-
+clean_paragraph = condense_text(raw_text)
+print(clean_paragraph)

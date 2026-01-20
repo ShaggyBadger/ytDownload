@@ -1,5 +1,6 @@
 from tkinter import E
 from joshlib.ollama import OllamaClient, OllamaProcessingError
+from joshlib.gemini import GeminiClient
 import db
 import math, re, json, os
 from pathlib import Path
@@ -157,7 +158,12 @@ def _secondary_cleaning_logic(tp, db_session):
     initial_word_count = len(initial_text.split())
 
     # Create a prompt for the LLM
-    prompt = f"Please add paragraph breaks to the following text:\n\n{initial_text}"
+    BASE_DIR = Path(__file__).resolve().parent
+    PROMPTS_DIR = BASE_DIR / "prompts"
+
+    prompt_template_path = PROMPTS_DIR / "format-paragraph.txt"
+    prompt_template = prompt_template_path.read_text()
+    prompt = prompt_template.format(SERMON_TEXT=initial_text)
 
     max_retries = 3
 
@@ -212,38 +218,47 @@ def _gen_metadata_logic(tp, db_session):
     """
     Logic for the metadata generation stage, processing fields sequentially.
     """
+    BASE_DIR = Path(__file__).resolve().parent
+    PROMPTS_DIR = BASE_DIR / "prompts"
+
+    # Defensive check for the input file
+    if not tp.secondary_cleaning_path or not Path(tp.secondary_cleaning_path).is_file():
+        error_msg = f"Input file for metadata generation not found or is invalid for transcript {tp.id}. Expected path: {tp.secondary_cleaning_path}"
+        logger.error(error_msg)
+        raise FileNotFoundError(error_msg)
+
     with open(tp.secondary_cleaning_path, 'r') as f:
         text_for_metadata = f.read()
 
     metadata = {}
 
     # 1. Get Title (sequentially, as it's a single call with custom logic)
-    title = None
-    match = re.search(r"The title of todays sermon is (.*?)[\.\n]", text_for_metadata, re.IGNORECASE)
-    if match:
-        title = match.group(1).strip()
-    else:
-        logger.info("Generating 'title'...")
-        prompt = f"Please provide a single, concise, and suitable title for the following text. Do not include any introductory phrases or bullet points. Just the title itself.\n\n---\n\n{text_for_metadata}"
-        title = _call_gemini(prompt)
+    logger.info("Generating 'title'...")
+    # load prompt templates
+    title_prompt_path = PROMPTS_DIR / "generate-title.txt"
+    prompt_template = title_prompt_path.read_text()
+    prompt = prompt_template.format(SERMON_TEXT=text_for_metadata)
+    title = _call_gemini(prompt)
     metadata['title'] = title
 
     # 2. Get other metadata fields sequentially
-    fields_to_generate = {
-        "thesis": "a concise thesis statement",
-        "outline": "a structured outline",
-        "summary": "a brief summary"
-    }
+    thesis_prompt_path = PROMPTS_DIR / "generate-thesis.txt"
+    prompt_template = thesis_prompt_path.read_text()
+    prompt = prompt_template.format(SERMON_TEXT=text_for_metadata)
+    thesis = _call_gemini(prompt)
+    metadata['thesis'] = thesis
 
-    for field, description in fields_to_generate.items():
-        logger.info(f"Generating '{field}'...")
-        prompt = f"Please generate {description} for the following text:\n\n---\n\n{text_for_metadata}"
-        try:
-            result = _call_gemini(prompt)
-            metadata[field] = result
-        except RuntimeError as e:
-            logger.error(f"Error generating '{field}': {e}")
-            metadata[field] = f"Error generating '{field}'."
+    summary_prompt_path = PROMPTS_DIR / "generate-summary.txt"
+    prompt_template = summary_prompt_path.read_text()
+    prompt = prompt_template.format(SERMON_TEXT=text_for_metadata)
+    summary = _call_gemini(prompt)
+    metadata['summary'] = summary
+
+    outline_prompt_path = PROMPTS_DIR / "generate-outline.txt"
+    prompt_template = outline_prompt_path.read_text()
+    prompt = prompt_template.format(SERMON_TEXT=text_for_metadata)
+    outline = _call_gemini(prompt)
+    metadata['outline'] = outline
 
     # 3. Write to file as JSON
     metadata_path = Path(tp.raw_transcript_path).with_suffix('.meta.txt')
@@ -981,23 +996,4 @@ class EditParagraphs:
             session.close()
         
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Manage transcript post-processing.")
-    parser.add_argument("--reset", type=int, help="Reset the processing status for a given transcript ID.")
 
-    args = parser.parse_args()
-
-    if args.reset:
-        session = db.SessionLocal()
-        try:
-            reset_transcript_status(args.reset, session)
-        finally:
-            session.close()
-    else:
-        # Existing main execution for EditParagraphs, if any
-        # TODO: build some kind of llm check to compare the raw and the edited versions? maybe use ollama?? 
-        # TODO: add option to save edited transcript back to DB/file system
-        editor = EditParagraphs()
-        edited_text = editor.run_editor()
-        print("\n--- Edited Sermon Transcript ---\n")
-        print(edited_text)

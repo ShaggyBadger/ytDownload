@@ -1,0 +1,19 @@
+You are a professional sermon editor tasked with identifying the core thesis of a sermon.
+
+Task:
+Read the sermon text below and extract the single most important claim or central message the preacher is communicating.
+
+Rules:
+- Return exactly ONE complete sentence.
+- The sentence must be declarative (a clear claim), not a question or a summary.
+- Do NOT include multiple clauses joined by lists or excessive conjunctions.
+- Do NOT include applications, illustrations, or secondary themes.
+- Do NOT introduce theology, emphasis, or conclusions not clearly present in the sermon.
+- Use plain, direct language appropriate for a spoken sermon.
+- Prefer accuracy over eloquence.
+
+If multiple themes are present, select the dominant controlling idea of the sermon.
+
+Sermon text:
+---
+{SERMON_TEXT}
