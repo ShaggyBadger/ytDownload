@@ -5,5 +5,7 @@ class ManualLinkProcessor():
         self.console = Console()
 
     def process_link(self):
-        self.console.print("Processing Manual Link...", style="bold blue")
-        # Placeholder for actual manual link processing logic
+        console = self.console
+        console.clear()
+        console.print("Processing Manual Link...", style="bold blue")
+        link = console.input("Enter the link: ").strip()

@@ -25,9 +25,10 @@ class Processor():
             # Call the corresponding method
             if action == 'back':
                 return self._actions[action]()
-            else:
-                self._actions.get(action)()
-                return True # Continue loop for other actions
+            
+            self._actions.get(action)()
+            return True # Continue loop for other actions
+        
         else:
             self.console.print(f"[bold red]Error: Unknown action '{action}'.[/bold red]")
             return True # Continue loop for unknown actions
