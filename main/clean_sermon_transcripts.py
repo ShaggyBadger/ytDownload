@@ -7,12 +7,12 @@ logger = setup_logger(__name__)
 
 def clean_sermon_transcripts():
     """
-    Finds all 'sermon_export.txt' files and removes extra blank lines from them.
+    Finds all 'edited.txt' files and removes extra blank lines from them.
     """
-    sermon_files = glob.glob('downloads/**/sermon_export.txt', recursive=True)
+    sermon_files = glob.glob('downloads/**/*.edited.txt', recursive=True)
 
     if not sermon_files:
-        logger.info("No 'sermon_export.txt' files found to clean.")
+        logger.info("No 'edited.txt' files found to clean.")
         return
 
     logger.info(f"Found {len(sermon_files)} sermon export files to clean.")

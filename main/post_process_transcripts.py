@@ -1227,7 +1227,7 @@ class EditParagraphs:
                 edited_transcript = self.edit_paragraphs(paragraphs_data, paragraph_file_path)
 
                 if edited_transcript:
-                    final_transcript_path = Path(sermon.raw_transcript_path).with_suffix('.edited.txt')
+                    final_transcript_path = Path(sermon.raw_transcript_path).parent / "edited.txt"
                     with open(final_transcript_path, 'w') as f:
                         f.write(edited_transcript)
                     logger.info(f"Successfully saved final edited transcript to: {final_transcript_path}")
