@@ -1,7 +1,4 @@
-class Config():
-    def __init__(self):
-        self.settings = {
-            'server_url': 'http://192.168.68.66:5000',
-        }
+from pathlib import Path
 
-    
+DATABASE_PATH = Path(__file__).parent / "project_database.db"
+SERVER_URL = 'http://192.168.68.66:5000'
