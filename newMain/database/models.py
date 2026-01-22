@@ -78,7 +78,6 @@ class JobInfo(Base):
     audio_start_time = Column(Integer, default=0)  # in seconds
     audio_end_time = Column(Integer, default=0)    # in seconds
 
-    is_complete = Column(Boolean, default=False)
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     
