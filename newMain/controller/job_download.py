@@ -2,50 +2,37 @@ from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
 
-from services import job_setup as job_setup_service
+from services import job_download_service
 from config import config
 
-class JobSetupController:
+class JobDownloadController:
     """Controller for handling the job setup menu and user interactions."""
 
     def __init__(self):
         self.console = Console()
         self.options = {
-            '1': {'desc': 'Manual Entry', 'func': self._handle_manual_entry},
-            '2': {'desc': 'CSV Entry', 'func': self._handle_csv_entry},
+            '1': {'desc': 'Download All Jobs', 'func': self._download_all},
+            '2': {'desc': 'Select Job to Download', 'func': self._select_download},
             'b': {'desc': 'Back to Main Menu', 'func': None}
         }
 
-    def _handle_manual_entry(self):
-        """Handles the logic for manual video URL entry."""
-        self.console.print("[cyan]Starting manual entry flow...[/cyan]")
-        
-        # Instantiate and run the service class
-        manual_job_setup = job_setup_service.ManualJobSetup()
-        manual_job_setup.run()
-        
-        self.console.input("Press Enter to return to the Job Setup Menu...")
+    def _download_all(self):
+        controller = job_download_service.Downloader()
+        controller.run_all()
 
-    def _handle_csv_entry(self):
-        """Handles the logic for CSV file entry."""
-        self.console.print("[cyan]Starting CSV entry flow...[/cyan]")
-
-        # Instantiate and run the service class
-        csv_job_setup = job_setup_service.CsvJobSetup()
-        csv_job_setup.run()
-
-        self.console.input("Press Enter to return to the Job Setup Menu...")
+    def _select_download(self):
+        pass
 
     def run(self):
-        """Displays the job setup menu and routes to the appropriate handler."""
+        """Displays the job download menu and routes to the appropriate handler."""
         while True:
             console = self.console
 
             console.clear()
-            console.rule("[bold blue]Job Setup Menu[/bold blue]")
+            console.rule("[bold blue]Job Download Menu[/bold blue]")
 
             table = Table(
-                title="Job Setup Options",
+                title="Job Download Options",
                 show_header=True,
                 header_style="bold magenta",
                 box=config.BOX_STYLE,

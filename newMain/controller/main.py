@@ -4,55 +4,74 @@ from rich.prompt import Prompt
 from rich import box
 
 from controller import job_setup
+from controller import job_download
 from config import config
 
-def main():
+class MainMenuController:
     """
     Top-level CLI menu for the sermon pipeline program, using Rich for visuals.
+    Encapsulates the main menu logic and handles user interaction to navigate
+    to different parts of the application.
     """
-    console = Console()
-    options = {
-        '1': {'desc': 'Job Setup Menu', 'func': job_setup.job_setup_menu},
-        'q': {'desc': 'Exit', 'func': None}
-    }
 
-    while True:
-        console.clear()
-        console.rule("[bold blue]Sermon Pipeline Main Menu[/bold blue]")
+    def __init__(self):
+        self.console = Console()
+        self.options = {
+            '1': {'desc': 'Job Setup Menu', 'func': self._run_job_setup_menu},
+            '2': {'desc': 'Download and Trim Jobs', 'func': self._run_job_download_menu},
+            'q': {'desc': 'Exit', 'func': None}
+        }
 
-        table = Table(
-            title="Available Options",
-            show_header=True,
-            header_style="bold magenta",
-            box=config.BOX_STYLE,
-            padding=(0,2) # top/bottom, left/right
-            )
-        table.add_column("Option", style="cyan", width=8)
-        table.add_column("Action", style="green")
+    def _run_job_setup_menu(self):
+        """Instantiates and runs the job setup controller."""
+        setup_controller = job_setup.JobSetupController()
+        setup_controller.run()
+    
+    def _run_job_download_menu(self):
+        """Innstantiates and runs the job download controller"""
+        download_controller = job_download.JobDownloadController()
+        download_controller.run()
 
-        for key, val in options.items():
-            table.add_row(key, val['desc'])
+    def run(self):
+        """
+        Displays the main menu and handles user choices.
+        """
+        while True:
+            console = self.console
+            
+            console.clear()
+            console.rule("[bold blue]Sermon Pipeline Main Menu[/bold blue]")
 
-        console.print(table)
+            table = Table(
+                title="Available Options",
+                show_header=True,
+                header_style="bold magenta",
+                box=config.BOX_STYLE,
+                padding=(0,2) # top/bottom, left/right
+                )
+            table.add_column("Option", style="cyan", width=8)
+            table.add_column("Action", style="green")
 
-        choice = Prompt.ask("[bold yellow]Select an option[/bold yellow]").strip()
+            for key, val in self.options.items():
+                table.add_row(key, val['desc'])
 
-        # Get the selected option dictionary safely
-        selected_option = options.get(choice)
+            console.print(table)
 
-        if selected_option is None:
-            console.print("[red]Invalid choice. Please select a valid option.[/red]")
-            console.input("Press Enter to continue...")
-            continue  # go back to menu
+            choice = Prompt.ask("[bold yellow]Select an option[/bold yellow]").strip()
 
-        # Get the function assigned to this option
-        action_func = selected_option.get('func')
+            selected_option = self.options.get(choice)
 
-        if action_func is None:
-            console.print("[bold red]Goodbye![/bold red]")
-            break  # exit the loop
+            if selected_option is None:
+                console.print("[red]Invalid choice. Please select a valid option.[/red]")
+                console.input("Press Enter to continue...")
+                continue
 
-        # Execute the function
-        console.print(f"[cyan]Executing:[/cyan] {selected_option.get('desc')}")
-        action_func()
+            action_func = selected_option.get('func')
+
+            if action_func is None:
+                console.print("[bold red]Goodbye![/bold red]")
+                break
+
+            console.print(f"[cyan]Executing:[/cyan] {selected_option.get('desc')}")
+            action_func()
         #break

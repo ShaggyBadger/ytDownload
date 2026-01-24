@@ -1,5 +1,6 @@
 """Main entry point for the application."""
-from controller.main import main
+from controller.main import MainMenuController
 
 if __name__ == "__main__":
-    main()
+    app = MainMenuController()
+    app.run()

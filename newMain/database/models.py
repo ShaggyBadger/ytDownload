@@ -18,12 +18,14 @@ from sqlalchemy import (
     Text,
     )
 from sqlalchemy.orm import relationship
+from pathlib import Path
 import enum
 import ulid
 
+from config import config
 from .db_config import Base, utcnow
 
-# TODO: Gotta move this later but for now it's here
+# constant variable to maintain the stage order
 STAGE_ORDER = [
     "download_video",
     "extract_audio",
@@ -71,12 +73,15 @@ class JobInfo(Base):
     __tablename__ = "job_info"
 
     id = Column(Integer, primary_key=True, index=True)
-    job_ulid = Column(String, unique=True, default=lambda: str(ulid.new()))
+    job_ulid = Column(String, unique=True, default=lambda: str(ulid.ulid()))
 
     # info on which video and what segment we want for this job
     video_id = Column(Integer, ForeignKey("video_info.id"), nullable=False)
     audio_start_time = Column(Integer, default=0)  # in seconds
     audio_end_time = Column(Integer, default=0)    # in seconds
+
+    # storage directory
+    job_directory = Column(String)
 
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
