@@ -34,3 +34,10 @@ box_options = [
 VIDEO_NAME = 'video.mp4'
 FULL_MP3_NAME = 'audio_full.mp3'
 MP3_SEGMENT_NAME = 'audio_segment.mp3'
+
+# --- YouTube Download Configuration ---
+# Optional: Path to a cookies.txt file for yt-dlp to use for authentication.
+# This can help bypass age restrictions and 403 errors.
+# Set to None if not used.
+# You can generate this file using a browser extension like "Get cookies.txt LOCALLY".
+YOUTUBE_COOKIE_FILE = None

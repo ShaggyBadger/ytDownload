@@ -21,7 +21,8 @@ class JobDownloadController:
         controller.run_all()
 
     def _select_download(self):
-        pass
+        controller = job_download_service.Downloader()
+        controller.run_one()
 
     def run(self):
         """Displays the job download menu and routes to the appropriate handler."""
