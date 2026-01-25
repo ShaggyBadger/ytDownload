@@ -28,7 +28,6 @@ class Deployer:
                 for job in jobs_to_deploy:
                     self._deploy_job(session, job)
 
-
     def _find_jobs_to_deploy(self, session: Session):
         """
         Finds jobs where the 'extract_audio' stage is 'success' and the
@@ -193,7 +192,7 @@ class Deployer:
                 response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
                 
                 transcript_content = response.text
-                transcript_filename = f"transcript_{job.job_ulid}.txt"
+                transcript_filename = config.WHISPER_TRANSCRIPT_NAME
                 transcript_path = Path(job.job_directory) / transcript_filename
                 
                 status.update(f"Saving transcript for job [bold cyan]{job.job_ulid}[/bold cyan] to [green]{transcript_path}[/green]...")

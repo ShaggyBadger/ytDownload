@@ -5,7 +5,7 @@ from rich.prompt import Prompt
 from controller import job_setup
 from controller import job_download
 from controller import whisper_deploy_menu
-from controller import formatter
+from controller import format_transcription
 from config import config
 
 class MainMenuController:
@@ -21,7 +21,7 @@ class MainMenuController:
             '1': {'desc': 'Job Setup Menu', 'func': self._run_job_setup_menu},
             '2': {'desc': 'Download and Trim Jobs', 'func': self._run_job_download_menu},
             '3': {'desc': 'Deploy/Retrieve Jobs to Server', 'func': self._run_whisper_deployment},
-            '4': {'desc': 'Format Textblocks', 'func': self._run_formater},
+            '4': {'desc': 'Format Textblocks', 'func': self._run_formatter},
             'q': {'desc': 'Exit', 'func': None}
         }
 
@@ -31,7 +31,7 @@ class MainMenuController:
         setup_controller.run()
     
     def _run_job_download_menu(self):
-        """Innstantiates and runs the job download controller"""
+        """Instantiates and runs the job download controller"""
         download_controller = job_download.JobDownloadController()
         download_controller.run()
 
@@ -42,7 +42,8 @@ class MainMenuController:
 
     def _run_formatter(self):
         """Activates script to format whisperAI slop into nice paragraphs"""
-        pass
+        format_controller = format_transcription.FormatTranscriptionController()
+        format_controller.run()
 
     def run(self):
         """

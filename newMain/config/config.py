@@ -34,5 +34,7 @@ box_options = [
 VIDEO_NAME = 'video.mp4'
 FULL_MP3_NAME = 'audio_full.mp3'
 MP3_SEGMENT_NAME = 'audio_segment.mp3'
+WHISPER_TRANSCRIPT_NAME = 'whisper_transcript.txt'
+FORMATED_TRANSCRIPT_NAME = 'formated_transcript.txt'
 
 WHISPER_MODEL = 'large'
