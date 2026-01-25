@@ -8,6 +8,8 @@ from controller import whisper_deploy_menu
 from controller import format_transcription
 from config import config
 
+from controller import metadata_generator
+
 class MainMenuController:
     """
     Top-level CLI menu for the sermon pipeline program, using Rich for visuals.
@@ -22,8 +24,13 @@ class MainMenuController:
             '2': {'desc': 'Download and Trim Jobs', 'func': self._run_job_download_menu},
             '3': {'desc': 'Deploy/Retrieve Jobs to Server', 'func': self._run_whisper_deployment},
             '4': {'desc': 'Format Textblocks', 'func': self._run_formatter},
+            '5': {'desc': 'Generate Metadata', 'func': self._run_metadata_menu},
             'q': {'desc': 'Exit', 'func': None}
         }
+
+    def _run_metadata_menu(self):
+        """runs the metadata controller"""
+        metadata_generator.metadata_generator_menu()
 
     def _run_job_setup_menu(self):
         """Instantiates and runs the job setup controller."""

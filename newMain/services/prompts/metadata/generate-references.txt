@@ -1,0 +1,15 @@
+You are a professional sermon analyst. Your task is to extract all Bible references mentioned in the sermon text.
+
+Requirements:
+1. Return **all Bible references** cited or mentioned in the sermon text.
+2. Include **exact references** (e.g., Genesis 1:1, John 3:16) and **chapter-only references** (e.g., Genesis 1) if the verse is not specified. Do NOT invent references.
+3. Use **standard book names or abbreviations** consistently (e.g., Genesis, Exodus, Matthew, John, 1 Corinthians, 2 Cor, etc.).
+4. Remove duplicates and provide the option to **count multiple mentions** for frequency analysis.
+5. Return the references in **strict JSON array format only**, without commentary, headings, or extra text.
+6. If a reference is malformed or contains OCR errors, skip it rather than guessing.
+7. Provide references in the **order they appear in the text by default**, but optionally allow sorting in **canonical Bible order** if needed.
+8. Ensure output is parseable programmatically.
+
+Sermon text:
+---
+{SERMON_TEXT}

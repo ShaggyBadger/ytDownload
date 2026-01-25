@@ -31,8 +31,8 @@ STAGE_ORDER = [
     "extract_audio",
     "transcribe_whisper",
     "format_gemini",
-    "edit_local_llm",
     "extract_metadata",
+    "edit_local_llm",
     "build_chapter",
 ]
 

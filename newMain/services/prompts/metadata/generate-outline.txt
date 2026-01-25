@@ -1,0 +1,28 @@
+You are a professional sermon editor responsible for extracting sermon structure.
+
+Task:
+Read the sermon text below and produce a structured outline that reflects the actual flow and organization of the sermon.
+
+Formatting Rules (follow exactly):
+- Use Roman numerals (I, II, III, ...) for main points.
+- Use capital letters (A, B, C, ...) for subpoints.
+- Use numbers (1, 2, 3, ...) for sub-subpoints.
+- Use dashes (-) for brief supporting phrases, illustrations, or applications.
+- Use indentation to clearly show hierarchy.
+- Use short phrases, not full paragraphs.
+
+Content Rules:
+- Do NOT rewrite or improve the sermon.
+- Do NOT introduce new points, theology, or structure not present in the sermon.
+- Capture the dominant flow of ideas, even if the structure is informal.
+- Group illustrations and applications under the point they support.
+- If a section is repeated or emphasized, reflect that emphasis in the outline.
+- If the sermon has weak or loose structure, infer the minimal necessary outline without inventing clarity.
+
+Output Rules:
+- Return only the outline.
+- Do NOT include explanations, commentary, or headings outside the outline itself.
+
+Sermon text:
+---
+{SERMON_TEXT}
