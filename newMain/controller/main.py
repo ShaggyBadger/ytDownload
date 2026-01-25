@@ -1,10 +1,11 @@
 from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
-from rich import box
 
 from controller import job_setup
 from controller import job_download
+from controller import whisper_deploy_menu
+from controller import formatter
 from config import config
 
 class MainMenuController:
@@ -19,6 +20,8 @@ class MainMenuController:
         self.options = {
             '1': {'desc': 'Job Setup Menu', 'func': self._run_job_setup_menu},
             '2': {'desc': 'Download and Trim Jobs', 'func': self._run_job_download_menu},
+            '3': {'desc': 'Deploy/Retrieve Jobs to Server', 'func': self._run_whisper_deployment},
+            '4': {'desc': 'Format Textblocks', 'func': self._run_formater},
             'q': {'desc': 'Exit', 'func': None}
         }
 
@@ -31,6 +34,15 @@ class MainMenuController:
         """Innstantiates and runs the job download controller"""
         download_controller = job_download.JobDownloadController()
         download_controller.run()
+
+    def _run_whisper_deployment(self):
+        """Activates script to deploy jobs to the server for transcription"""
+        deployment_controller = whisper_deploy_menu.Menu()
+        deployment_controller.run()
+
+    def _run_formatter(self):
+        """Activates script to format whisperAI slop into nice paragraphs"""
+        pass
 
     def run(self):
         """

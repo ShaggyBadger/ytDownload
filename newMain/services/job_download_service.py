@@ -3,6 +3,8 @@ This module handles services related to downloading videos. It includes function
 to manage download tasks and interact with the database to store video information.
 """
 
+# TODO: update the JobStage entry with the filepath once it makes stuff
+
 from rich.console import Console
 from rich.prompt import Prompt
 import yt_dlp
@@ -122,6 +124,8 @@ class Downloader:
         return job_list
 
     def _download_job(self, job_package):
+        # TODO: this should really be 2 methods. one to download, and anther to
+        # get the mp3 extracted.
         job_id = job_package.get('job_id')
 
         with get_session() as session:
@@ -190,14 +194,29 @@ class Downloader:
 
             # Update job stage to success
             with get_session() as session:
-                job_stage = session.query(JobStage).filter_by(
+                download_stage = session.query(JobStage).filter_by(
                     job_id=job_id, stage_name='download_video'
                 ).first()
-                if job_stage:
-                    job_stage.state = StageState.success
-                    job_stage.finished_at = utcnow()
-                    job_stage.output_path = str(trimmed_audio_path)
-                    session.commit()
+                extract_audio_stage = session.query(JobStage).filter_by(
+                    job_id=job_id, stage_name='extract_audio'
+                ).first()
+
+                if download_stage:
+                    download_stage.state = StageState.success
+                    download_stage.finished_at = utcnow()
+                    # The output_path for download_video should arguably be the full audio path, but for now,
+                    # we'll keep it consistent with the trimmed for simplicity given the current usage.
+                    # Or we could set it to None, as the extract_audio stage has the meaningful output.
+                    # Let's set it to None, as it's not the final audio file.
+                    download_stage.output_path = None 
+                
+                if extract_audio_stage:
+                    self.console.log(f"Debug: trimmed_audio_path={trimmed_audio_path}, extract_audio_stage={extract_audio_stage}")
+                    extract_audio_stage.state = StageState.success
+                    extract_audio_stage.finished_at = utcnow()
+                    extract_audio_stage.output_path = str(trimmed_audio_path)
+                
+                session.commit()
             self.console.print(f"Successfully processed job {job_id}.", style="green")
             time.sleep(2) # Added delay to show all output
         except Exception as e:

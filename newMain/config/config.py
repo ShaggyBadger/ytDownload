@@ -6,7 +6,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # Define other configurations relative to the project root
 DATABASE_PATH = PROJECT_ROOT / "project_database.db"
-SERVER_URL = 'http://192.168.68.66:5000'
+FASTAPI_URL="http://192.168.68.66:5000"  # make sure to add a / before endpoints
 
 BOX_STYLE = box.ROUNDED
 
@@ -35,9 +35,4 @@ VIDEO_NAME = 'video.mp4'
 FULL_MP3_NAME = 'audio_full.mp3'
 MP3_SEGMENT_NAME = 'audio_segment.mp3'
 
-# --- YouTube Download Configuration ---
-# Optional: Path to a cookies.txt file for yt-dlp to use for authentication.
-# This can help bypass age restrictions and 403 errors.
-# Set to None if not used.
-# You can generate this file using a browser extension like "Get cookies.txt LOCALLY".
-YOUTUBE_COOKIE_FILE = None
+WHISPER_MODEL = 'large'
