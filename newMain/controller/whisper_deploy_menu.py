@@ -12,6 +12,7 @@ class Menu:
         self.options = {
             '1': {'desc': 'Deploy Pending Jobs', 'func': self._deploy},
             '2': {'desc': 'Check For Completed Jobs', 'func': self._recover},
+            '3': {'desc': 'Manually Retrieve Job', 'func': self._manually_recover},
             'b': {'desc': 'Back to Main Menu', 'func': None}
         }
 
@@ -51,3 +52,8 @@ class Menu:
 
     def _recover(self):
         self.deployer.check_for_completed_jobs()
+
+    def _manually_recover(self):
+        job_id = Prompt.ask("[bold green]Enter the Job ID to retrieve[/bold green]")
+        if job_id:
+            self.deployer.recover_specific_job(job_id)
