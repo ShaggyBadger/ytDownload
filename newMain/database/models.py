@@ -6,6 +6,7 @@ It also has the StageState enum to lock in the possible states for each processi
 and it defines the order of processing stages in STAGE_ORDER.
 """
 
+import logging
 from sqlalchemy import (
     Column,
     Integer,
@@ -25,6 +26,8 @@ import ulid
 from config import config
 from .db_config import Base, utcnow
 
+logger = logging.getLogger(__name__)
+
 # constant variable to maintain the stage order
 STAGE_ORDER = [
     "download_video",
@@ -35,6 +38,8 @@ STAGE_ORDER = [
     "edit_local_llm",
     "build_chapter",
 ]
+logger.debug("STAGE_ORDER constant defined: %s", STAGE_ORDER)
+
 
 # lock in the available states for processing stages
 class StageState(enum.Enum):
@@ -43,6 +48,7 @@ class StageState(enum.Enum):
     blocked = "blocked"
     success = "success"
     failed = "failed"
+logger.debug("StageState enum defined.")
 
 
 class VideoInfo(Base):
@@ -67,6 +73,7 @@ class VideoInfo(Base):
 
     # === Timestamps ===
     created_at = Column(DateTime(timezone=True), default=utcnow)
+logger.debug("VideoInfo ORM model defined.")
 
 
 class JobInfo(Base):
@@ -88,6 +95,7 @@ class JobInfo(Base):
     
     stages = relationship("JobStage", back_populates="job")
     video = relationship("VideoInfo") # Add this line
+logger.debug("JobInfo ORM model defined.")
 
 
 class JobStage(Base):
@@ -127,3 +135,6 @@ class JobStage(Base):
     paragraph_json_path = Column(Text) # Path to the paragraph json file for this stage
 
     job = relationship("JobInfo", back_populates="stages")
+logger.debug("JobStage ORM model defined.")
+
+logger.debug("database/models.py module loaded and ORM models defined.")

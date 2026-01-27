@@ -1,13 +1,20 @@
+import logging
 from pathlib import Path
 from rich import box
 import random
 
+logger = logging.getLogger(__name__)
+logger.debug("config/config.py module loaded. Initializing configuration parameters.")
+
 # Define the absolute path to the project root directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+logger.debug("PROJECT_ROOT: %s", PROJECT_ROOT)
 
 # Define other configurations relative to the project root
 DATABASE_PATH = PROJECT_ROOT / "project_database.db"
+logger.debug("DATABASE_PATH: %s", DATABASE_PATH)
 FASTAPI_URL="http://192.168.68.66:5000"  # make sure to add a / before endpoints
+logger.debug("FASTAPI_URL: %s", FASTAPI_URL)
 
 # Rich library box style options
 box_options = [
@@ -19,13 +26,16 @@ box_options = [
     box.HEAVY,           # very bold borders
 ]
 BOX_STYLE = box.ROUNDED
+logger.debug("BOX_STYLE set to ROUNDED.")
 
 def build_job_directory_path(job_ulid: str, job_id: int) -> str:
     """
     Constructs the path for a job's directory and ensures it exists.
     """
+    logger.debug(f"Building job directory path for ULID: {job_ulid}, ID: {job_id}")
     job_dir = PROJECT_ROOT / "jobs" / f"{job_ulid}_{job_id}"
     job_dir.mkdir(parents=True, exist_ok=True)
+    logger.debug(f"Job directory created/ensured: {job_dir}")
     return str(job_dir)
 
 # standard file names for the jobs
@@ -38,7 +48,11 @@ METADATA_FILE_NAME = 'metadata.json'
 PARAGRAPHS_FILE_NAME = 'paragraphs.json'
 FINAL_DOCUMENT_NAME = 'finsihed-document.txt'
 
+METADATA_CATEGORIES = ['title', 'thesis', 'summary', 'outline', 'tone'] # New constant
+logger.debug("METADATA_CATEGORIES defined: %s", METADATA_CATEGORIES)
+
 WHISPER_MODEL = 'large'
+logger.debug("WHISPER_MODEL set to '%s'", WHISPER_MODEL)
 
 _spinner_styles = [
     'aesthetic'
@@ -124,7 +138,9 @@ _josh_favorite_spinners = [
     'pong',
     'bouncingBall'
 ]
-SPINNER = 'pong'
+SPINNER = 'bouncingBall'
+logger.debug("Default SPINNER set to '%s'", SPINNER)
 
 def select_random_spinner():
     SPINNER_STYLE = random.choice(_josh_favorite_spinners)
+    logger.debug("Random spinner selected: '%s'", SPINNER_STYLE)

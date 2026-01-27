@@ -1,3 +1,5 @@
+import logging
+
 from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
@@ -11,6 +13,8 @@ from controller.chapter_builder_menu import ChapterBuilderMenu # Import ChapterB
 from config import config
 
 from controller import metadata_generator
+
+logger = logging.getLogger(__name__)
 
 class MainMenuController:
     """
@@ -28,49 +32,85 @@ class MainMenuController:
             '4': {'desc': 'Format Textblocks', 'func': self._run_formatter},
             '5': {'desc': 'Generate Metadata', 'func': self._run_metadata_menu},
             '6': {'desc': 'Edit Transcript', 'func': self._run_editor_menu},
-            '7': {'desc': 'Build Chapter', 'func': self._run_chapter_builder_menu}, # New option
+            '7': {'desc': 'Build Chapter', 'func': self._run_chapter_builder_menu},
             'q': {'desc': 'Exit', 'func': None}
         }
+        logger.debug("MainMenuController initialized with options.")
 
     def _run_chapter_builder_menu(self):
         """Runs the chapter builder menu."""
-        chapter_builder_menu_instance = ChapterBuilderMenu() # Instantiate the class
-        chapter_builder_menu_instance.run()
+        logger.info("Dispatching to Chapter Builder Menu.")
+        try:
+            chapter_builder_menu_instance = ChapterBuilderMenu()
+            chapter_builder_menu_instance.run()
+            logger.info("Returned from Chapter Builder Menu.")
+        except Exception:
+            logger.error("Error encountered in Chapter Builder Menu.", exc_info=True)
 
     def _run_editor_menu(self):
-        """Runs the editor menu. Duh."""
-        editor_menu = editor_controller.EditorMenu()
-        editor_menu.run()
-
+        """Runs the editor menu."""
+        logger.info("Dispatching to Editor Menu.")
+        try:
+            editor_menu = editor_controller.EditorMenu()
+            editor_menu.run()
+            logger.info("Returned from Editor Menu.")
+        except Exception:
+            logger.error("Error encountered in Editor Menu.", exc_info=True)
     
     def _run_metadata_menu(self):
-        """runs the metadata controller"""
-        metadata_generator.metadata_generator_menu()
+        """Runs the metadata controller"""
+        logger.info("Dispatching to Metadata Generator Menu.")
+        try:
+            metadata_generator.metadata_generator_menu()
+            logger.info("Returned from Metadata Generator Menu.")
+        except Exception:
+            logger.error("Error encountered in Metadata Generator Menu.", exc_info=True)
 
     def _run_job_setup_menu(self):
         """Instantiates and runs the job setup controller."""
-        setup_controller = job_setup.JobSetupController()
-        setup_controller.run()
+        logger.info("Dispatching to Job Setup Menu.")
+        try:
+            setup_controller = job_setup.JobSetupController()
+            setup_controller.run()
+            logger.info("Returned from Job Setup Menu.")
+        except Exception:
+            logger.error("Error encountered in Job Setup Menu.", exc_info=True)
     
     def _run_job_download_menu(self):
         """Instantiates and runs the job download controller"""
-        download_controller = job_download.JobDownloadController()
-        download_controller.run()
+        logger.info("Dispatching to Job Download Menu.")
+        try:
+            download_controller = job_download.JobDownloadController()
+            download_controller.run()
+            logger.info("Returned from Job Download Menu.")
+        except Exception:
+            logger.error("Error encountered in Job Download Menu.", exc_info=True)
 
     def _run_whisper_deployment(self):
         """Activates script to deploy jobs to the server for transcription"""
-        deployment_controller = whisper_deploy_menu.Menu()
-        deployment_controller.run()
+        logger.info("Dispatching to Whisper Deployment Menu.")
+        try:
+            deployment_controller = whisper_deploy_menu.Menu()
+            deployment_controller.run()
+            logger.info("Returned from Whisper Deployment Menu.")
+        except Exception:
+            logger.error("Error encountered in Whisper Deployment Menu.", exc_info=True)
 
     def _run_formatter(self):
         """Activates script to format whisperAI slop into nice paragraphs"""
-        format_controller = format_transcription.FormatTranscriptionController()
-        format_controller.run()
+        logger.info("Dispatching to Formatter Menu.")
+        try:
+            format_controller = format_transcription.FormatTranscriptionController()
+            format_controller.run()
+            logger.info("Returned from Formatter Menu.")
+        except Exception:
+            logger.error("Error encountered in Formatter Menu.", exc_info=True)
 
     def run(self):
         """
         Displays the main menu and handles user choices.
         """
+        logger.info("MainMenuController started. Displaying main menu.")
         while True:
             console = self.console
             
@@ -82,7 +122,7 @@ class MainMenuController:
                 show_header=True,
                 header_style="bold magenta",
                 box=config.BOX_STYLE,
-                padding=(0,2) # top/bottom, left/right
+                padding=(0,2)
                 )
             table.add_column("Option", style="cyan", width=8)
             table.add_column("Action", style="green")
@@ -93,10 +133,12 @@ class MainMenuController:
             console.print(table)
 
             choice = Prompt.ask("[bold yellow]Select an option[/bold yellow]").strip()
+            logger.info("User selected option: '%s'", choice)
 
             selected_option = self.options.get(choice)
 
             if selected_option is None:
+                logger.warning("User entered invalid choice: '%s'", choice)
                 console.print("[red]Invalid choice. Please select a valid option.[/red]")
                 console.input("Press Enter to continue...")
                 continue
@@ -104,9 +146,14 @@ class MainMenuController:
             action_func = selected_option.get('func')
 
             if action_func is None:
+                logger.info("User chose to exit the application. Goodbye!")
                 console.print("[bold red]Goodbye![/bold red]")
                 break
-
-            console.print(f"[cyan]Executing:[/cyan] {selected_option.get('desc')}")
-            action_func()
-        #break
+            
+            logger.info("Executing: %s", selected_option.get('desc'))
+            try:
+                action_func()
+            except Exception:
+                logger.critical(f"An unhandled error occurred while running '{selected_option.get('desc')}'", exc_info=True)
+                console.print(f"[bold red]An unexpected error occurred while running '{selected_option.get('desc')}'. Check logs for details.[/bold red]")
+                console.input("Press Enter to continue...")
