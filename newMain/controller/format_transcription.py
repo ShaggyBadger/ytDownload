@@ -9,6 +9,7 @@ from pathlib import Path
 from database.session_manager import get_session
 from database.models import JobInfo, JobStage, StageState
 from sqlalchemy import and_
+from sqlalchemy.orm import aliased
 
 from services.formatter import Formatter
 from config import config
@@ -73,25 +74,30 @@ class FormatTranscriptionController:
             try:
                 with get_session() as session:
                     # Find the specific job by ID, and check its stages
-                    logger.debug(f"Querying for Job ID {job_id} with transcribe_whisper success and format_gemini pending/failed.")
+                    logger.debug(f"Querying for Job ID {job_id} with transcribe_whisper success and format_gemini pending.")
+                    
+                    # Create aliases for JobStage to filter on two different stages for the same JobInfo
+                    TranscribeWhisperStage = aliased(JobStage)
+                    FormatGeminiStage = aliased(JobStage)
+
                     job_to_format = (
                         session.query(JobInfo)
                         .filter(JobInfo.id == job_id)
-                        .join(JobInfo.stages)
-                        .filter(JobStage.stage_name == "transcribe_whisper", JobStage.state == StageState.success)
-                        .filter(JobInfo.stages.any(
-                            and_(
-                                JobStage.stage_name == "format_gemini",
-                                (JobStage.state == StageState.pending) | (JobStage.state == StageState.failed) | (JobStage.state == StageState.success)
-                            )
-                        ))
+                        .join(TranscribeWhisperStage, JobInfo.stages)
+                        .join(FormatGeminiStage, JobInfo.stages)
+                        .filter(
+                            TranscribeWhisperStage.stage_name == "transcribe_whisper",
+                            TranscribeWhisperStage.state == StageState.success,
+                            FormatGeminiStage.stage_name == "format_gemini",
+                            FormatGeminiStage.state.in_([StageState.pending, StageState.failed])
+                        )
                         .first()
                     )
 
                     if not job_to_format:
-                        logger.warning(f"Job ID {job_id} not found or not ready for formatting (transcribe_whisper not success or format_gemini not pending/failed/success).")
+                        logger.warning(f"Job ID {job_id} not found or not ready for formatting (transcribe_whisper not success or format_gemini not pending/failed).")
                         status.update(f"[bold red]Job ID {job_id} not found or not ready for formatting.[/bold red]")
-                        self.console.print(f"[red]Job ID {job_id} not found, or its 'transcribe_whisper' stage is not successful, or 'format_gemini' is not pending/failed/success.[/red]")
+                        self.console.print(f"[red]Job ID {job_id} not found, or its 'transcribe_whisper' stage is not successful, or 'format_gemini' is not pending/failed.[/red]")
                         Prompt.ask("Press Enter to continue...")
                         return
 
@@ -175,22 +181,28 @@ class FormatTranscriptionController:
         with self.console.status("[bold green]Searching for transcriptions to format...[/bold green]", spinner=config.SPINNER) as status:
             try:
                 with get_session() as session:
-                    logger.debug("Querying for jobs with transcribe_whisper success and format_gemini pending/failed/success.")
+                    # Query for jobs where transcribe_whisper is successful AND format_gemini is pending
+                    logger.debug("Querying for jobs with transcribe_whisper success and format_gemini pending/failed.")
+                    
+                    # Create aliases for JobStage to filter on two different stages for the same JobInfo
+                    TranscribeWhisperStage = aliased(JobStage)
+                    FormatGeminiStage = aliased(JobStage)
+
                     jobs_to_format = (
                         session.query(JobInfo)
-                        .join(JobInfo.stages)
-                        .filter(JobStage.stage_name == "transcribe_whisper", JobStage.state == StageState.success)
-                        .filter(JobInfo.stages.any(
-                            and_(
-                                JobStage.stage_name == "format_gemini",
-                                (JobStage.state == StageState.pending) | (JobStage.state == StageState.failed) | (JobStage.state == StageState.success)
-                            )
-                        ))
+                        .join(TranscribeWhisperStage, JobInfo.stages)
+                        .join(FormatGeminiStage, JobInfo.stages)
+                        .filter(
+                            TranscribeWhisperStage.stage_name == "transcribe_whisper",
+                            TranscribeWhisperStage.state == StageState.success,
+                            FormatGeminiStage.stage_name == "format_gemini",
+                            FormatGeminiStage.state.in_([StageState.pending, StageState.failed])
+                        )
                         .all()
                     )
 
                     if not jobs_to_format:
-                        logger.info("No transcriptions found ready for formatting (transcribe_whisper not success or format_gemini not pending/failed/success).")
+                        logger.info("No transcriptions found ready for formatting (transcribe_whisper success and format_gemini pending/failed).")
                         status.update("[bold green]No transcriptions found ready for formatting.[/bold green]")
                         self.console.print("[green]No transcriptions found ready for formatting.[/green]")
                         return
