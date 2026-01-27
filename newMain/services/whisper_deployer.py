@@ -15,16 +15,16 @@ class Deployer:
         self.fastapi_base_url = config.FASTAPI_URL # Store the base URL
 
     def deploy_pending_jobs(self):
-        with self.console.status("Searching for jobs to deploy...", spinner="dots") as status:
+        with self.console.status("Searching for jobs to deploy...", spinner=config.SPINNER) as status:
             with get_session() as session:
                 jobs_to_deploy = self._find_jobs_to_deploy(session)
 
                 if not jobs_to_deploy:
-                    status.update("No jobs are ready for deployment.", spinner="dots")
+                    status.update("No jobs are ready for deployment.", spinner=config.SPINNER)
                     self.console.print("No jobs are ready for deployment.", style="green")
                     return
 
-                status.update(f"Found {len(jobs_to_deploy)} job(s) to deploy. Deploying...", spinner="dots")
+                status.update(f"Found {len(jobs_to_deploy)} job(s) to deploy. Deploying...", spinner=config.SPINNER)
                 for job in jobs_to_deploy:
                     self._deploy_job(session, job)
 
@@ -57,7 +57,7 @@ class Deployer:
         return jobs
 
     def _deploy_job(self, session: Session, job: JobInfo):
-        with self.console.status(f"Deploying job [bold cyan]{job.job_ulid}[/bold cyan]...", spinner="dots") as status:
+        with self.console.status(f"Deploying job [bold cyan]{job.job_ulid}[/bold cyan]...", spinner=config.SPINNER) as status:
             url = self.fastapi_base_url + "/new-job"
 
             # Dynamically construct the path to the audio segment
@@ -114,34 +114,34 @@ class Deployer:
                 session.commit()
 
     def check_for_completed_jobs(self):
-        with self.console.status("Checking for completed transcription jobs...", spinner="dots") as status:
+        with self.console.status("Checking for completed transcription jobs...", spinner=config.SPINNER) as status:
             with get_session() as session:
                 running_jobs = self._find_running_jobs(session)
                 if not running_jobs:
                     status.update(
                         status = "No jobs are currently processing on the server.",
-                        spinner="dots",
+                        spinner=config.SPINNER,
                         )
                     self.console.print("No jobs are currently processing on the server.", style="green")
                     return
                 
-                status.update(f"Found {len(running_jobs)} job(s) being transcribed. Checking status...", spinner="dots")
+                status.update(f"Found {len(running_jobs)} job(s) being transcribed. Checking status...", spinner=config.SPINNER)
                 for job in running_jobs:
                     self._check_and_retrieve_job(session, job)
 
     def recover_specific_job(self, job_ulid: str):
-        with self.console.status(f"Attempting to manually recover job [bold cyan]{job_ulid}[/bold cyan]...", spinner="dots") as status:
+        with self.console.status(f"Attempting to manually recover job [bold cyan]{job_ulid}[/bold cyan]...", spinner=config.SPINNER) as status:
             with get_session() as session:
                 job = self._find_job_by_ulid(session, job_ulid)
                 if not job:
                     status.update(
                         status=f"Job [bold red]{job_ulid}[/bold red] not found in the local database.",
-                        spinner="dots"
+                        spinner=config.SPINNER
                     )
                     self.console.print(f"Job [bold red]{job_ulid}[/bold red] not found in the local database.", style="red")
                     return
                 
-                status.update(f"Found job [bold cyan]{job.job_ulid}[/bold cyan]. Checking server status...", spinner="dots")
+                status.update(f"Found job [bold cyan]{job.job_ulid}[/bold cyan]. Checking server status...", spinner=config.SPINNER)
                 self._check_and_retrieve_job(session, job)
 
     def _find_running_jobs(self, session: Session):
@@ -169,7 +169,7 @@ class Deployer:
         return job
 
     def _check_and_retrieve_job(self, session: Session, job: JobInfo):
-        with self.console.status(f"Checking status for job [bold cyan]{job.job_ulid}[/bold cyan]...", spinner="dots") as status:
+        with self.console.status(f"Checking status for job [bold cyan]{job.job_ulid}[/bold cyan]...", spinner=config.SPINNER) as status:
             whisper_stage = next((s for s in job.stages if s.stage_name == "transcribe_whisper"), None)
             if not whisper_stage: 
                 status.stop()
@@ -212,7 +212,7 @@ class Deployer:
                 session.commit()
 
     def _retrieve_transcript(self, session: Session, job: JobInfo, whisper_stage: JobStage):
-        with self.console.status(f"Retrieving transcript for job [bold cyan]{job.job_ulid}[/bold cyan]...", spinner="dots") as status:
+        with self.console.status(f"Retrieving transcript for job [bold cyan]{job.job_ulid}[/bold cyan]...", spinner=config.SPINNER) as status:
             retrieve_url = self.fastapi_base_url + f"/retrieve-job/{job.job_ulid}"
             try:
                 status.update(f"Downloading transcript from server for job [bold cyan]{job.job_ulid}[/bold cyan]...")

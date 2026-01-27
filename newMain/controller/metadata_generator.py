@@ -4,6 +4,7 @@ from rich.table import Table
 from database.session_manager import get_session
 from database.models import JobInfo, JobStage, StageState, STAGE_ORDER
 from services.metadata_extractor import GenerateMetadata
+from config import config
 
 console = Console()
 
@@ -85,7 +86,7 @@ def _run_metadata_extraction(job_ids: list[int]):
         return
 
     for job_id in job_ids:
-        with console.status(f"[bold green]Processing metadata for Job ID: {job_id}...[/bold green]", spinner="dots"):
+        with console.status(f"[bold green]Processing metadata for Job ID: {job_id}...[/bold green]", spinner=config.SPINNER):
             extractor = GenerateMetadata(job_id=job_id, console=console) # Pass console
             extractor.process_job()
         console.print(f"[bold green]Finished processing metadata for Job ID: {job_id}.[/bold green]\n")

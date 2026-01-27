@@ -87,6 +87,7 @@ class JobInfo(Base):
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     
     stages = relationship("JobStage", back_populates="job")
+    video = relationship("VideoInfo") # Add this line
 
 
 class JobStage(Base):
@@ -123,5 +124,6 @@ class JobStage(Base):
     )
 
     output_path = Column(Text) # Path to the output file for this stage
+    paragraph_json_path = Column(Text) # Path to the paragraph json file for this stage
 
     job = relationship("JobInfo", back_populates="stages")

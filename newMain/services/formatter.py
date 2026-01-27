@@ -2,6 +2,7 @@ from rich.console import Console
 from pathlib import Path
 from typing import Optional
 import time
+import re
 
 from joshlib.gemini import GeminiClient
 from config import config
@@ -28,6 +29,9 @@ class Formatter:
             for attempt in range(max_retries):
                 self.console.print(f"  Calling Gemini for text formatting (Attempt {attempt + 1}/{max_retries})...", highlight=False)
                 formatted_text = self._format_text(transcript_text)
+
+                # clean up extra paragraph breaks
+                formatted_text = re.sub(r'\n+', '\n', formatted_text).strip()
                 
                 if formatted_text is None: # Quota error or API error
                     self.console.print("  [yellow]Warning: Gemini API quota exceeded or another API error occurred during formatting. Aborting retries.[/yellow]")

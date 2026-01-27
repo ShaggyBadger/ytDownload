@@ -1,5 +1,6 @@
 from pathlib import Path
 from rich import box
+import random
 
 # Define the absolute path to the project root directory
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -8,6 +9,15 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATABASE_PATH = PROJECT_ROOT / "project_database.db"
 FASTAPI_URL="http://192.168.68.66:5000"  # make sure to add a / before endpoints
 
+# Rich library box style options
+box_options = [
+    box.SQUARE,
+    box.ROUNDED,
+    box.MINIMAL,
+    box.MINIMAL_DOUBLE_HEAD,
+    box.DOUBLE,          # thick, heavy borders
+    box.HEAVY,           # very bold borders
+]
 BOX_STYLE = box.ROUNDED
 
 def build_job_directory_path(job_ulid: str, job_id: int) -> str:
@@ -18,29 +28,19 @@ def build_job_directory_path(job_ulid: str, job_id: int) -> str:
     job_dir.mkdir(parents=True, exist_ok=True)
     return str(job_dir)
 
-"""
-rich box options:
-box_options = [
-    box.SQUARE,
-    box.ROUNDED,
-    box.MINIMAL,
-    box.MINIMAL_DOUBLE_HEAD,
-    box.DOUBLE,          # thick, heavy borders
-    box.HEAVY,           # very bold borders
-]
-"""
-
 # standard file names for the jobs
 VIDEO_NAME = 'video.mp4'
 FULL_MP3_NAME = 'audio_full.mp3'
 MP3_SEGMENT_NAME = 'audio_segment.mp3'
 WHISPER_TRANSCRIPT_NAME = 'whisper_transcript.txt'
-FORMATED_TRANSCRIPT_NAME = 'formated_transcript.txt'
+FORMATED_TRANSCRIPT_NAME = 'formatted_transcript.txt'
 METADATA_FILE_NAME = 'metadata.json'
+PARAGRAPHS_FILE_NAME = 'paragraphs.json'
+FINAL_DOCUMENT_NAME = 'finsihed-document.txt'
 
 WHISPER_MODEL = 'large'
 
-spinner_styles = [
+_spinner_styles = [
     'aesthetic'
     'arc'
     'arrow'
@@ -115,4 +115,16 @@ spinner_styles = [
     'triangle'
     'weather'
 ]
-SPINNER_STYLE = 'aesthetic'
+_josh_favorite_spinners = [
+    'asthetic',
+    'toggle7',
+    'toggle10',
+    'dots10',
+    'growVerticle',
+    'pong',
+    'bouncingBall'
+]
+SPINNER = 'pong'
+
+def select_random_spinner():
+    SPINNER_STYLE = random.choice(_josh_favorite_spinners)

@@ -159,7 +159,7 @@ class Downloader:
             trimmed_audio_path = job_package.get('job_dir') / config.MP3_SEGMENT_NAME
 
             # Download
-            with self.console.status(f"[bold green]Downloading {job_package.get('video_url')}...", spinner="dots") as status:
+            with self.console.status(f"[bold green]Downloading {job_package.get('video_url')}...", spinner=config.SPINNER) as status:
                 ydl_opts = {
                     'format': 'm4a/bestaudio/best',
                     'postprocessors': [{
@@ -181,7 +181,7 @@ class Downloader:
                     ydl.download([job_package.get('video_url')])
 
             # Trim
-            with self.console.status("[bold green]Trimming audio...", spinner="dots") as status:
+            with self.console.status("[bold green]Trimming audio...", spinner=config.SPINNER) as status:
                 audio = AudioSegment.from_file(full_audio_path)
                 start_ms = job_package.get('audio_start_time') * 1000
                 end_ms = job_package.get('audio_end_time') * 1000

@@ -6,6 +6,8 @@ from controller import job_setup
 from controller import job_download
 from controller import whisper_deploy_menu
 from controller import format_transcription
+from controller import editor_controller
+from controller.chapter_builder_menu import ChapterBuilderMenu # Import ChapterBuilderMenu class directly
 from config import config
 
 from controller import metadata_generator
@@ -25,9 +27,22 @@ class MainMenuController:
             '3': {'desc': 'Deploy/Retrieve Jobs to Server', 'func': self._run_whisper_deployment},
             '4': {'desc': 'Format Textblocks', 'func': self._run_formatter},
             '5': {'desc': 'Generate Metadata', 'func': self._run_metadata_menu},
+            '6': {'desc': 'Edit Transcript', 'func': self._run_editor_menu},
+            '7': {'desc': 'Build Chapter', 'func': self._run_chapter_builder_menu}, # New option
             'q': {'desc': 'Exit', 'func': None}
         }
 
+    def _run_chapter_builder_menu(self):
+        """Runs the chapter builder menu."""
+        chapter_builder_menu_instance = ChapterBuilderMenu() # Instantiate the class
+        chapter_builder_menu_instance.run()
+
+    def _run_editor_menu(self):
+        """Runs the editor menu. Duh."""
+        editor_menu = editor_controller.EditorMenu()
+        editor_menu.run()
+
+    
     def _run_metadata_menu(self):
         """runs the metadata controller"""
         metadata_generator.metadata_generator_menu()
