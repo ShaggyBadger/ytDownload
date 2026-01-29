@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 from typing import Dict, Any
 
-from joshlib.ollama import OllamaClient
+from joshlib.gemini import GeminiClient
 from rich.console import Console
 
 from config import config
@@ -22,7 +22,7 @@ class MetadataExtractor:
         self.job_id = job_id
         self.console = Console()
         self.prompts_dir = Path(__file__).parent / 'prompts' / 'metadata'
-        self.llm_client = OllamaClient(temperature=0.7)
+        self.llm_client = GeminiClient()
         logger.debug(f"MetadataExtractor initialized for Job ID: {self.job_id}. Prompts from: {self.prompts_dir}")
 
     def _load_metadata_json(self, metadata_path: Path) -> Dict[str, Any]:
@@ -77,7 +77,6 @@ class MetadataExtractor:
         else:
             logger.debug("No changes needed during metadata.json initialization.")
 
-
     def _get_transcript_text(self, session, job_id: int) -> str:
         """Retrieves the formatted transcript text for a given job."""
         logger.debug(f"Retrieving formatted transcript text for Job ID: {job_id}.")
@@ -106,7 +105,9 @@ class MetadataExtractor:
         prompt_path = self.prompts_dir / 'generate-title.txt'
         prompt_template = prompt_path.read_text()
         prompt = prompt_template.format(SERMON_TEXT=transcript_text)
-        return self.llm_client.submit_prompt(prompt)
+
+        result = self.llm_client.submit_prompt(prompt)
+        return result
 
     def _generate_thesis(self, transcript_text: str, current_metadata: dict) -> str:
         logger.debug(f"Generating 'thesis' for Job ID: {self.job_id} using LLM.")
@@ -181,11 +182,19 @@ class MetadataExtractor:
                             status_message = f"Generating {category} for job {job.job_ulid}..."
                             with self.console.status(status_message, spinner=config.SPINNER):
                                 try:
-                                    generated_value = generation_method(transcript_text, metadata) # Removed job_directory arg
-                                    metadata[category] = generated_value
-                                    self._save_metadata_json(metadata, metadata_path)
-                                    self.console.print(f"[green]  {category} generated and saved.[/green]")
-                                    logger.info(f"Successfully generated and saved '{category}' for Job ID: {self.job_id}.")
+                                    gemini_result = generation_method(transcript_text, metadata)
+                                    if gemini_result.ok is True:
+                                        metadata[category] = gemini_result.output
+                                        self._save_metadata_json(metadata, metadata_path)
+                                        self.console.print(f"[green]  {category} generated and saved.[/green]")
+                                        logger.info(f"Successfully generated and saved '{category}' for Job ID: {self.job_id}.")
+                                    else:
+                                        error_type = gemini_result.error_type
+                                        error_message = gemini_result.error_message
+                                        exit_code = gemini_result.exit_code
+
+                                        logger.error(f'\n**********\nError with Gemini call.\nError type: {error_type}\nError Message: {error_message}\nExit Code: {exit_code}\n*********\n')
+                                        break
                                 except Exception:
                                     logger.error(f"Error generating '{category}' for Job ID: {self.job_id}.", exc_info=True)
                                     self.console.print(f"[red]  Error generating {category}. Check logs.[/red]")
