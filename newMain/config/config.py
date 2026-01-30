@@ -138,7 +138,7 @@ _josh_favorite_spinners = [
     'pong',
     'bouncingBall'
 ]
-SPINNER = 'bouncingBall'
+SPINNER = 'toggle10'
 logger.debug("Default SPINNER set to '%s'", SPINNER)
 
 def select_random_spinner():

@@ -9,7 +9,8 @@ from controller import job_download
 from controller import whisper_deploy_menu
 from controller import format_transcription
 from controller import editor_controller
-from controller.chapter_builder_menu import ChapterBuilderMenu # Import ChapterBuilderMenu class directly
+from controller.chapter_builder_menu import ChapterBuilderMenu
+from controller.evaluator_controller import EvaluatorMenu
 from config import config
 
 from controller import metadata_generator
@@ -32,10 +33,21 @@ class MainMenuController:
             '4': {'desc': 'Format Textblocks', 'func': self._run_formatter},
             '5': {'desc': 'Generate Metadata', 'func': self._run_metadata_menu},
             '6': {'desc': 'Edit Transcript', 'func': self._run_editor_menu},
-            '7': {'desc': 'Build Chapter', 'func': self._run_chapter_builder_menu},
+            '7': {'desc': 'Run Paragraph Evaluation', 'func': self._run_evaluation_menu},
+            '8': {'desc': 'Build Chapter', 'func': self._run_chapter_builder_menu},
             'q': {'desc': 'Exit', 'func': None}
         }
         logger.debug("MainMenuController initialized with options.")
+
+    def _run_evaluation_menu(self):
+        """Runs the evaluator menu."""
+        logger.info("Dispatching to Evaluator Menu.")
+        try:
+            evaluator_menu = EvaluatorMenu()
+            evaluator_menu.run()
+            logger.info("Returned from Evaluator Menu.")
+        except Exception:
+            logger.error("Error encountered in Evaluator Menu.", exc_info=True)
 
     def _run_chapter_builder_menu(self):
         """Runs the chapter builder menu."""
