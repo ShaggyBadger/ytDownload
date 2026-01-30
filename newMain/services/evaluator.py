@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
+from rich.prompt import Prompt
 
 from joshlib.ollama import OllamaClient
 from config import config
@@ -310,7 +311,7 @@ class Evaluator:
             paragraph["regeneration_prompt"] = final_prompt
 
             # update the status for this paragraph
-            paragraph['evaluation_status'] = 'regenerated'
+            paragraph["evaluation_status"] = "regenerated"
             self.logger.info(f"Paragraph {index} successfully regenerated.")
         except Exception as e:
             self.logger.error(
@@ -402,3 +403,322 @@ class Evaluator:
                 json.dump(data, f, indent=4)
         except IOError as e:
             self.logger.error(f"Error writing to {file_path}: {e}", exc_info=True)
+
+
+class UserInteractiveEvaluator:
+    """
+    Allows the user to interactively evaluate the quality of a regenerated paragraph.
+    """
+
+    def __init__(self, console: Console):
+        self.logger = logging.getLogger(__name__)
+        self.console = console
+        self.evaluator_service = Evaluator()  # Instantiate the Evaluator service
+
+    def evaluate_single_job(self):
+        """
+        Guides the user to select a single job and evaluates its eligible paragraphs
+        interactively.
+        """
+        eligible_jobs = self._get_eligible_jobs_for_user_evaluation()
+        if not eligible_jobs:
+            self.console.print(
+                "[yellow]No jobs found with regenerated paragraphs needing user evaluation.[/yellow]"
+            )
+            return
+
+        self.console.print("\n[bold cyan]Select a job to evaluate:[/bold cyan]")
+        for i, job_dir in enumerate(eligible_jobs):
+            self.console.print(f"{i + 1}. {job_dir.name}")
+
+        while True:
+            choice = Prompt.ask(
+                "Enter job number (or 'q' to quit)",
+                choices=[str(i + 1) for i in range(len(eligible_jobs))] + ["q"],
+            ).lower()
+            if choice == "q":
+                return
+            try:
+                selected_index = int(choice) - 1
+                if 0 <= selected_index < len(eligible_jobs):
+                    selected_job_dir = eligible_jobs[selected_index]
+                    self._evaluate_job_interactively(selected_job_dir)
+                    break
+                else:
+                    self.console.print("[red]Invalid job number.[/red]")
+            except ValueError:
+                self.console.print(
+                    "[red]Invalid input. Please enter a number or 'q'.[/red]"
+                )
+
+    def evaluate_all_jobs(self):
+        """
+        Evaluates all eligible jobs interactively, processing paragraphs that are
+        marked as 'regenerated' and awaiting user review.
+        """
+        eligible_jobs = self._get_eligible_jobs_for_user_evaluation()
+        if not eligible_jobs:
+            self.console.print(
+                "[yellow]No jobs found with regenerated paragraphs needing user evaluation.[/yellow]"
+            )
+            return
+
+        self.console.print(
+            f"\n[bold green]Starting interactive evaluation for {len(eligible_jobs)} job(s).[/bold green]"
+        )
+        for job_dir in eligible_jobs:
+            self._evaluate_job_interactively(job_dir)
+
+        self.console.print(
+            "\n[bold green]Interactive evaluation complete for all eligible jobs.[/bold green]"
+        )
+
+    def _evaluate_job_interactively(self, job_dir: Path):
+        """
+        Evaluates a single job by iterating through its 'regenerated' paragraphs
+        and prompting the user for input.
+        """
+        self.logger.info(f"Starting interactive evaluation for job: {job_dir.name}")
+        paragraphs_path = job_dir / config.PARAGRAPHS_FILE_NAME
+
+        if not paragraphs_path.exists():
+            self.console.print(
+                f"[red]Error: paragraphs.json not found in {job_dir}. Skipping.[/red]"
+            )
+            self.logger.error(
+                f"paragraphs.json not found in {job_dir}. Skipping interactive evaluation."
+            )
+            return
+
+        paragraphs = self._load_paragraphs(paragraphs_path)
+        if paragraphs is None:
+            self.console.print(
+                f"[red]Error loading paragraphs from {paragraphs_path}. Skipping.[/red]"
+            )
+            return
+
+        # Initialize EvaluatorInitialization for a job if not already done.
+        # This ensures all paragraphs have necessary keys for evaluation.
+        EvaluatorInitialization().run_initialization(job_dir)
+
+        paragraphs_to_evaluate_indices = [
+            i
+            for i, p in enumerate(paragraphs)
+            if p.get("evaluation_status") == "regenerated"
+        ]
+
+        if not paragraphs_to_evaluate_indices:
+            self.console.print(
+                f"[yellow]No regenerated paragraphs needing user evaluation in job: {job_dir.name}.[/yellow]"
+            )
+            self.logger.info(
+                f"No regenerated paragraphs needing user evaluation in job: {job_dir.name}."
+            )
+            return
+
+        self.console.print(
+            f"\n[bold blue]--- Evaluating Job: {job_dir.name} ---[/bold blue]"
+        )
+        for index in paragraphs_to_evaluate_indices:
+            paragraph_data = paragraphs[index]
+
+            # This is the new orchestration
+            user_decision = self._run_llm_evaluation_and_display(
+                paragraph_data, index, job_dir, paragraphs
+            )
+
+            self._update_paragraph_status_from_user_input(paragraph_data, user_decision)
+            self._save_paragraphs(
+                paragraphs_path, paragraphs
+            )  # Save after each paragraph
+
+        self.console.print(
+            f"[bold green]Interactive evaluation complete for job: {job_dir.name}.[/bold green]"
+        )
+        self.logger.info(f"Interactive evaluation complete for job: {job_dir.name}.")
+
+    def _get_eligible_jobs_for_user_evaluation(self) -> list[Path]:
+        """
+        Fetches job directories that contain paragraphs with an 'evaluation_status' of 'regenerated'.
+        """
+        self.logger.debug("Gathering eligible job directories for user evaluation.")
+        main_dir = config.PROJECT_ROOT / "jobs"
+        all_job_dirs = [p for p in main_dir.iterdir() if p.is_dir()]
+        eligible_jobs = []
+
+        for job_dir in all_job_dirs:
+            paragraphs_path = job_dir / config.PARAGRAPHS_FILE_NAME
+            if paragraphs_path.exists():
+                paragraphs = self._load_paragraphs(paragraphs_path)
+                if paragraphs and any(
+                    p.get("evaluation_status") == "regenerated" for p in paragraphs
+                ):
+                    eligible_jobs.append(job_dir)
+            else:
+                self.logger.warning(
+                    f"paragraphs.json not found for job: {job_dir.name}"
+                )
+
+        eligible_jobs.sort(key=lambda p: p.name)
+        self.logger.debug(
+            f"Found {len(eligible_jobs)} eligible jobs for user evaluation."
+        )
+        return eligible_jobs
+
+    def _run_llm_evaluation_and_display(
+        self, paragraph_data: dict, index: int, job_dir: Path, all_paragraphs: list
+    ):
+        """
+        Displays original/edited text, current critique/rating, runs LLM evaluation with a spinner,
+        displays new results, and prompts user for decision.
+        """
+        original = paragraph_data.get("original", "[N/A]")
+        edited = paragraph_data.get("edited", "[N/A]")
+
+        # New: Display current rating and critique
+        current_critique = paragraph_data.get(
+            "critique", "[No previous critique available.]"
+        )
+        current_rating = paragraph_data.get("rating", "N/A")
+
+        self.console.print(f"\n[bold magenta]Paragraph {index + 1}[/bold magenta]")
+        self.console.print(
+            Panel(
+                f"[bold yellow]Original:[/bold yellow]\n{original}\n\n"
+                f"[bold green]Edited:[/bold green]\n{edited}\n\n"
+                f"[bold purple]Previous Critique:[/bold purple] {current_critique}\n"
+                f"[bold blue]Previous Rating:[/bold blue] {current_rating}/10",
+                title=f"[bold yellow]Paragraph {index + 1} - Review (Before Re-evaluation)[/bold yellow]",
+                border_style="cyan",
+            )
+        )
+
+        # 2. Run LLM with spinner
+        metadata = self.evaluator_service._load_metadata(job_dir)
+        thesis = metadata.get("thesis", "")
+        tone = metadata.get("tone", "")
+
+        evaluation_prompt = self.evaluator_service._build_evaluation_prompt(
+            all_paragraphs, index, thesis, tone
+        )
+
+        new_rating = "N/A"
+        new_critique = "[LLM did not provide a critique.]"
+        llm_full_output = ""
+
+        with self.console.status(
+            "[bold blue]Running LLM evaluation...[/bold blue]", spinner=config.SPINNER
+        ):
+            try:
+                llm_full_output = self.evaluator_service.ollama_client.submit_prompt(
+                    evaluation_prompt
+                )
+                evaluation_data = self.evaluator_service._parse_evaluation_response(
+                    llm_full_output
+                )
+
+                if evaluation_data:
+                    new_rating = evaluation_data.get("rating", "N/A")
+                    new_critique = evaluation_data.get(
+                        "critique", "[LLM did not provide a critique.]"
+                    )
+                else:
+                    self.logger.warning(
+                        f"Could not parse LLM evaluation response for paragraph {index}."
+                    )
+
+            except Exception as e:
+                self.logger.error(
+                    f"Error during LLM evaluation for paragraph {index}: {e}",
+                    exc_info=True,
+                )
+                new_critique = f"[ERROR during LLM evaluation: {e}]"
+
+        # 3. Display new results
+        self.console.print(
+            Panel(
+                f"[bold red]New Critique:[/bold red] {new_critique}\n"
+                f"[bold blue]New Rating:[/bold blue] {new_rating}/10",
+                title="[bold yellow]LLM Evaluation Results[/bold yellow]",
+                border_style="magenta",
+            )
+        )
+
+        # Update paragraph_data with new evaluation results
+        paragraph_data["rating"] = new_rating
+        paragraph_data["critique"] = new_critique
+        paragraph_data["full_evaluation_output"] = llm_full_output
+
+        # 4. Prompt for user decision in a loop
+        while True:
+            user_decision = self._get_user_evaluation()
+            if user_decision == "v":
+                self.console.print(
+                    Panel(
+                        llm_full_output,
+                        title="[bold blue]Full LLM Response[/bold blue]",
+                        border_style="blue",
+                    )
+                )
+                self.console.input("Press Enter to continue...")
+                # The loop continues, re-offering the accept/reject menu
+            else:
+                return user_decision  # Return y, n, or s
+
+    def _get_user_evaluation(self) -> str:
+        """
+        Prompts the user for their evaluation (pass/fail/skip/view full response).
+        """
+        return Prompt.ask(
+            "Keep this edit? ([bold green]y[/bold green]/[bold red]n[/bold red]/[bold yellow]s[/bold yellow]kip/[bold blue]v[/bold blue]iew full LLM response)",
+            choices=["y", "n", "s", "v"],
+            default="y",
+        ).lower()
+
+    def _update_paragraph_status_from_user_input(
+        self, paragraph_data: dict, user_decision: str
+    ):
+        """
+        Updates the evaluation status of the paragraph based on user input.
+        """
+        if user_decision == "y":
+            paragraph_data["evaluation_status"] = "passed"
+            self.logger.info("User accepted the regenerated paragraph.")
+        elif user_decision == "n":
+            paragraph_data["evaluation_status"] = (
+                "failed"  # User rejected, so it needs another regeneration cycle
+            )
+            self.logger.info("User rejected the regenerated paragraph.")
+        elif user_decision == "s":
+            paragraph_data["evaluation_status"] = (
+                "regenerated"  # Keep as regenerated for later
+            )
+            self.logger.info("User skipped evaluation for this paragraph.")
+        else:
+            self.logger.warning(
+                f"Unknown user decision: {user_decision}. Status not changed."
+            )
+
+    def _load_paragraphs(self, file_path: Path) -> list | None:
+        """Safely loads paragraphs from a JSON file."""
+        try:
+            with file_path.open("r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            self.logger.error(
+                f"Error reading or parsing {file_path}: {e}", exc_info=True
+            )
+            return None
+
+    def _save_paragraphs(self, file_path: Path, data: list):
+        """Safely saves paragraphs to a JSON file."""
+        try:
+            with file_path.open("w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4)
+        except IOError as e:
+            self.logger.error(f"Error writing to {file_path}: {e}", exc_info=True)
+
+
+if __name__ == "__main__":
+    evaluator = RegeneratedEvaluation()
+    evaluator.run()

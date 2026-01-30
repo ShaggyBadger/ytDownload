@@ -11,6 +11,7 @@ from controller import format_transcription
 from controller import editor_controller
 from controller.chapter_builder_menu import ChapterBuilderMenu
 from controller.evaluator_controller import EvaluatorMenu
+from controller.regenerator_menu import RegeneratorMenu
 from config import config
 
 from controller import metadata_generator
@@ -44,10 +45,18 @@ class MainMenuController:
                 "desc": "Run Paragraph Evaluation",
                 "func": self._run_evaluation_menu,
             },
-            "8": {"desc": "Build Chapter", "func": self._run_chapter_builder_menu},
+            "8": {
+                "desc": "Run Regeneration Review",
+                "func": self._regeneration_review_menu,
+            },
+            "9": {"desc": "Build Chapter", "func": self._run_chapter_builder_menu},
             "q": {"desc": "Exit", "func": None},
         }
         logger.debug("MainMenuController initialized with options.")
+
+    def _regeneration_review_menu(self):
+        regeneration_menu = RegeneratorMenu()
+        regeneration_menu.run()
 
     def _run_evaluation_menu(self):
         """Runs the evaluator menu."""
