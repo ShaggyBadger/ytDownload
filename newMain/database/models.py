@@ -17,7 +17,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Enum,
     Text,
-    )
+)
 from sqlalchemy.orm import relationship
 from pathlib import Path
 import enum
@@ -48,6 +48,8 @@ class StageState(enum.Enum):
     blocked = "blocked"
     success = "success"
     failed = "failed"
+
+
 logger.debug("StageState enum defined.")
 
 
@@ -73,6 +75,8 @@ class VideoInfo(Base):
 
     # === Timestamps ===
     created_at = Column(DateTime(timezone=True), default=utcnow)
+
+
 logger.debug("VideoInfo ORM model defined.")
 
 
@@ -85,16 +89,18 @@ class JobInfo(Base):
     # info on which video and what segment we want for this job
     video_id = Column(Integer, ForeignKey("video_info.id"), nullable=False)
     audio_start_time = Column(Integer, default=0)  # in seconds
-    audio_end_time = Column(Integer, default=0)    # in seconds
+    audio_end_time = Column(Integer, default=0)  # in seconds
 
     # storage directory
     job_directory = Column(String)
 
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
-    
+
     stages = relationship("JobStage", back_populates="job")
-    video = relationship("VideoInfo") # Add this line
+    video = relationship("VideoInfo")  # Add this line
+
+
 logger.debug("JobInfo ORM model defined.")
 
 
@@ -102,9 +108,7 @@ class JobStage(Base):
     __tablename__ = "job_stage"
 
     # Define a unique constraint to ensure each job has unique stage names
-    __table_args__ = (
-        UniqueConstraint("job_id", "stage_name"),
-    )
+    __table_args__ = (UniqueConstraint("job_id", "stage_name"),)
 
     # Primary key and foreign key to JobInfo
     id = Column(Integer, primary_key=True)
@@ -131,10 +135,12 @@ class JobStage(Base):
         default=utcnow,
     )
 
-    output_path = Column(Text) # Path to the output file for this stage
-    paragraph_json_path = Column(Text) # Path to the paragraph json file for this stage
+    output_path = Column(Text)  # Path to the output file for this stage
+    paragraph_json_path = Column(Text)  # Path to the paragraph json file for this stage
 
     job = relationship("JobInfo", back_populates="stages")
+
+
 logger.debug("JobStage ORM model defined.")
 
 logger.debug("database/models.py module loaded and ORM models defined.")

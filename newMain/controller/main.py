@@ -17,6 +17,7 @@ from controller import metadata_generator
 
 logger = logging.getLogger(__name__)
 
+
 class MainMenuController:
     """
     Top-level CLI menu for the sermon pipeline program, using Rich for visuals.
@@ -27,15 +28,24 @@ class MainMenuController:
     def __init__(self):
         self.console = Console()
         self.options = {
-            '1': {'desc': 'Job Setup Menu', 'func': self._run_job_setup_menu},
-            '2': {'desc': 'Download and Trim Jobs', 'func': self._run_job_download_menu},
-            '3': {'desc': 'Deploy/Retrieve Jobs to Server', 'func': self._run_whisper_deployment},
-            '4': {'desc': 'Format Textblocks', 'func': self._run_formatter},
-            '5': {'desc': 'Generate Metadata', 'func': self._run_metadata_menu},
-            '6': {'desc': 'Edit Transcript', 'func': self._run_editor_menu},
-            '7': {'desc': 'Run Paragraph Evaluation', 'func': self._run_evaluation_menu},
-            '8': {'desc': 'Build Chapter', 'func': self._run_chapter_builder_menu},
-            'q': {'desc': 'Exit', 'func': None}
+            "1": {"desc": "Job Setup Menu", "func": self._run_job_setup_menu},
+            "2": {
+                "desc": "Download and Trim Jobs",
+                "func": self._run_job_download_menu,
+            },
+            "3": {
+                "desc": "Deploy/Retrieve Jobs to Server",
+                "func": self._run_whisper_deployment,
+            },
+            "4": {"desc": "Format Textblocks", "func": self._run_formatter},
+            "5": {"desc": "Generate Metadata", "func": self._run_metadata_menu},
+            "6": {"desc": "Edit Transcript", "func": self._run_editor_menu},
+            "7": {
+                "desc": "Run Paragraph Evaluation",
+                "func": self._run_evaluation_menu,
+            },
+            "8": {"desc": "Build Chapter", "func": self._run_chapter_builder_menu},
+            "q": {"desc": "Exit", "func": None},
         }
         logger.debug("MainMenuController initialized with options.")
 
@@ -68,7 +78,7 @@ class MainMenuController:
             logger.info("Returned from Editor Menu.")
         except Exception:
             logger.error("Error encountered in Editor Menu.", exc_info=True)
-    
+
     def _run_metadata_menu(self):
         """Runs the metadata controller"""
         logger.info("Dispatching to Metadata Generator Menu.")
@@ -87,7 +97,7 @@ class MainMenuController:
             logger.info("Returned from Job Setup Menu.")
         except Exception:
             logger.error("Error encountered in Job Setup Menu.", exc_info=True)
-    
+
     def _run_job_download_menu(self):
         """Instantiates and runs the job download controller"""
         logger.info("Dispatching to Job Download Menu.")
@@ -125,7 +135,7 @@ class MainMenuController:
         logger.info("MainMenuController started. Displaying main menu.")
         while True:
             console = self.console
-            
+
             console.clear()
             console.rule("[bold blue]Sermon Pipeline Main Menu[/bold blue]")
 
@@ -134,13 +144,13 @@ class MainMenuController:
                 show_header=True,
                 header_style="bold magenta",
                 box=config.BOX_STYLE,
-                padding=(0,2)
-                )
+                padding=(0, 2),
+            )
             table.add_column("Option", style="cyan", width=8)
             table.add_column("Action", style="green")
 
             for key, val in self.options.items():
-                table.add_row(key, val['desc'])
+                table.add_row(key, val["desc"])
 
             console.print(table)
 
@@ -151,21 +161,28 @@ class MainMenuController:
 
             if selected_option is None:
                 logger.warning("User entered invalid choice: '%s'", choice)
-                console.print("[red]Invalid choice. Please select a valid option.[/red]")
+                console.print(
+                    "[red]Invalid choice. Please select a valid option.[/red]"
+                )
                 console.input("Press Enter to continue...")
                 continue
 
-            action_func = selected_option.get('func')
+            action_func = selected_option.get("func")
 
             if action_func is None:
                 logger.info("User chose to exit the application. Goodbye!")
                 console.print("[bold red]Goodbye![/bold red]")
                 break
-            
-            logger.info("Executing: %s", selected_option.get('desc'))
+
+            logger.info("Executing: %s", selected_option.get("desc"))
             try:
                 action_func()
             except Exception:
-                logger.critical(f"An unhandled error occurred while running '{selected_option.get('desc')}'", exc_info=True)
-                console.print(f"[bold red]An unexpected error occurred while running '{selected_option.get('desc')}'. Check logs for details.[/bold red]")
+                logger.critical(
+                    f"An unhandled error occurred while running '{selected_option.get('desc')}'",
+                    exc_info=True,
+                )
+                console.print(
+                    f"[bold red]An unexpected error occurred while running '{selected_option.get('desc')}'. Check logs for details.[/bold red]"
+                )
                 console.input("Press Enter to continue...")

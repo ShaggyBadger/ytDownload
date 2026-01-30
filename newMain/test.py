@@ -1,16 +1,22 @@
 import re
 import sys
 
+
 def parse_evaluator_output(output):
     # Extract the integer Rating
     rating_match = re.search(r"Rating:\s*(\d+)", output)
     rating = int(rating_match.group(1)) if rating_match else 0
-    
+
     # Extract the Critique specifically between the triple brackets
-    critique_match = re.search(r"CRITIQUE FOR REDO:\s*<<<\s*(.*?)\s*>>>", output, re.DOTALL)
-    critique = critique_match.group(1).strip() if critique_match else "No feedback provided."
-    
+    critique_match = re.search(
+        r"CRITIQUE FOR REDO:\s*<<<\s*(.*?)\s*>>>", output, re.DOTALL
+    )
+    critique = (
+        critique_match.group(1).strip() if critique_match else "No feedback provided."
+    )
+
     return rating, critique
+
 
 tone = "The sermon is delivered with passionate enthusiasm and an urgent, instructional tone, actively engaging the audience through direct challenges and illustrative explanations."
 
@@ -108,23 +114,30 @@ REVISED PARAGRAPH:
 (Provide ONLY the revised text. No preamble or explanation.)
 """
 
-full_prompt = prompt.format(TONE=tone, THESIS=thesis, PREV=prev, NEXT=following, OG=target_paragraph_og, EP=target_paragraph_edited)
+full_prompt = prompt.format(
+    TONE=tone,
+    THESIS=thesis,
+    PREV=prev,
+    NEXT=following,
+    OG=target_paragraph_og,
+    EP=target_paragraph_edited,
+)
 
 from joshlib.ollama import OllamaClient
 
 client = OllamaClient(temperature=0.1)
 response = client.submit_prompt(full_prompt)
-print('response...')
+print("response...")
 print(response)
-print('\n\n******\nRunning revision....')
+print("\n\n******\nRunning revision....")
 
 rating, critique = parse_evaluator_output(response)
-print(f'Rating: {rating}')
-print(f'Critique: {critique}')
+print(f"Rating: {rating}")
+print(f"Critique: {critique}")
 if "none" in critique.lower():
-    print('Ending program: No critique to process.')
+    print("Ending program: No critique to process.")
     sys.exit()
-print('******\n\n')
+print("******\n\n")
 
 full_revision_prompt = revision_prompt.format(
     THESIS=thesis,
@@ -132,12 +145,9 @@ full_revision_prompt = revision_prompt.format(
     PREV=prev,
     NEXT=following,
     CRITIQUE=critique,
-    OG=target_paragraph_og
+    OG=target_paragraph_og,
 )
 
 editor_client = OllamaClient(temperature=0.7)
 response = editor_client.submit_prompt(full_revision_prompt)
 print(response)
-
-
-

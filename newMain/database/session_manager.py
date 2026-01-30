@@ -4,6 +4,7 @@ from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
+
 @contextmanager
 def get_session():
     """This function provides a session for other modules to use."""

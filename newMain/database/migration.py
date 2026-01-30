@@ -10,9 +10,10 @@ from pathlib import Path
 import os
 import shutil
 
-from rich.console import Console # Moved to module level
+from rich.console import Console  # Moved to module level
 
 from config.config import PROJECT_ROOT
+
 # Add project root to sys.path to allow imports from other modules like 'database'
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
@@ -22,7 +23,8 @@ from alembic import command
 from database.db_config import engine
 
 logger = logging.getLogger(__name__)
-console = Console() # Instantiated at module level
+console = Console()  # Instantiated at module level
+
 
 class AlembicManager:
     """
@@ -40,11 +42,10 @@ class AlembicManager:
         logger.debug(f"Alembic directory: {self.alembic_dir}")
         logger.debug(f"Alembic INI: {self.alembic_ini_path}")
 
-
     def _generate_alembic_ini_content(self):
         """Generates the content for the alembic.ini file."""
         logger.debug("Generating alembic.ini content.")
-        db_url = str(self.engine.url).replace('%', '%%')
+        db_url = str(self.engine.url).replace("%", "%%")
         return f"""
 [alembic]
 script_location = alembic
@@ -92,7 +93,9 @@ datefmt = %H:%M:%S
         logger.debug("Updating alembic/env.py to point to project models.")
         env_py_path = self.alembic_dir / "env.py"
         if not env_py_path.exists():
-            logger.error(f"Error: alembic/env.py not found at {env_py_path}! Cannot update.")
+            logger.error(
+                f"Error: alembic/env.py not found at {env_py_path}! Cannot update."
+            )
             return
 
         try:
@@ -110,18 +113,23 @@ datefmt = %H:%M:%S
 
             original_line = "from logging.config import fileConfig"
             if "from database.models import Base" not in content:
-                content = content.replace(original_line, f"{path_and_import}\n\n{original_line}")
+                content = content.replace(
+                    original_line, f"{path_and_import}\n\n{original_line}"
+                )
                 logger.debug("Added project path and model import to env.py.")
 
             # Set target_metadata
-            content = content.replace("target_metadata = None", "target_metadata = Base.metadata")
+            content = content.replace(
+                "target_metadata = None", "target_metadata = Base.metadata"
+            )
             logger.debug("Set target_metadata to Base.metadata in env.py.")
 
             env_py_path.write_text(content)
             logger.info("Updated alembic/env.py successfully to use project models.")
         except Exception:
-            logger.error(f"Failed to update alembic/env.py at {env_py_path}.", exc_info=True)
-
+            logger.error(
+                f"Failed to update alembic/env.py at {env_py_path}.", exc_info=True
+            )
 
     def initialize_environment(self):
         """
@@ -144,14 +152,13 @@ datefmt = %H:%M:%S
 
             # 3. Modify the env.py to point to our models
             self._update_env_py()
-            
+
             # 4. Create an initial revision
             logger.info("Creating initial revision after environment setup.")
             self.create_revision("Initial migration")
             logger.info("Alembic environment initialized successfully.")
         except Exception:
             logger.error("Failed to initialize Alembic environment.", exc_info=True)
-
 
     def create_revision(self, message):
         """
@@ -167,8 +174,9 @@ datefmt = %H:%M:%S
             command.revision(alembic_cfg, message=message, autogenerate=True)
             logger.info("Alembic revision created successfully.")
         except Exception:
-            logger.error(f"Failed to create revision with message '{message}'.", exc_info=True)
-
+            logger.error(
+                f"Failed to create revision with message '{message}'.", exc_info=True
+            )
 
     def upgrade_to_head(self):
         """Upgrades the database to the latest revision."""
@@ -180,7 +188,6 @@ datefmt = %H:%M:%S
         except Exception:
             logger.error("Failed to upgrade database to 'head'.", exc_info=True)
 
-
     def downgrade_one(self):
         """Downgrades the database by one revision."""
         logger.info("Downgrading database by one revision.")
@@ -190,7 +197,6 @@ datefmt = %H:%M:%S
             logger.info("Database downgraded successfully by one revision.")
         except Exception:
             logger.error("Failed to downgrade database by one revision.", exc_info=True)
-
 
     def reset_environment(self):
         """Deletes the alembic directory and config file."""
@@ -214,11 +220,14 @@ def main_menu():
 
     options = {
         "1": ("Initialize Alembic Environment", manager.initialize_environment),
-        "2": ("Create New Migration (autogen)", lambda: manager.create_revision(input("Enter migration message: "))),
+        "2": (
+            "Create New Migration (autogen)",
+            lambda: manager.create_revision(input("Enter migration message: ")),
+        ),
         "3": ("Upgrade to Latest Migration", manager.upgrade_to_head),
         "4": ("Downgrade by One Migration", manager.downgrade_one),
         "5": ("!!! RESET Alembic Environment !!!", manager.reset_environment),
-        "q": ("Quit", lambda: sys.exit("Exiting."))
+        "q": ("Quit", lambda: sys.exit("Exiting.")),
     }
 
     while True:
@@ -226,7 +235,7 @@ def main_menu():
         console.print("\n--- Alembic Database Migration Menu ---", style="bold yellow")
         for key, (desc, _) in options.items():
             console.print(f"  [cyan]{key}.[/cyan] {desc}", style="green")
-        
+
         choice = input("Enter your choice: ").strip().lower()
         logger.debug("User selected menu option: '%s'", choice)
 
@@ -237,14 +246,19 @@ def main_menu():
                 action()
             except SystemExit as e:
                 logger.info(f"Exiting Alembic menu: {e}")
-                print(e) # Print exit message to console
+                print(e)  # Print exit message to console
                 break
             except Exception:
-                logger.error(f"An error occurred while executing '{desc}'.", exc_info=True)
-                console.print(f"[bold red]An error occurred during migration: Check logs for details.[/bold red]")
+                logger.error(
+                    f"An error occurred while executing '{desc}'.", exc_info=True
+                )
+                console.print(
+                    f"[bold red]An error occurred during migration: Check logs for details.[/bold red]"
+                )
         else:
             logger.warning("Invalid choice in Alembic Migration Menu: '%s'", choice)
             console.print("[bold red]Invalid choice. Please try again.[/bold red]")
+
 
 if __name__ == "__main__":
     main_menu()
