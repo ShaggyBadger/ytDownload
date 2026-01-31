@@ -140,7 +140,7 @@ _josh_favorite_spinners = [
     "pong",
     "bouncingBall",
 ]
-SPINNER = "aesthetic"
+SPINNER = "pong"
 logger.debug("Default SPINNER set to '%s'", SPINNER)
 
 
