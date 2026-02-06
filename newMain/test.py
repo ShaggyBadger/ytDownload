@@ -11,6 +11,7 @@ console = Console()
 # CHANGE THIS to try different spinners
 SPINNER_NAME = "point"  # examples: dots, line, pipe, simpleDots, star, bounce, growVertical, moon, earth
 
+
 def main():
     spinner = Spinner(SPINNER_NAME, text=f"[bold cyan]Spinner: {SPINNER_NAME}")
 

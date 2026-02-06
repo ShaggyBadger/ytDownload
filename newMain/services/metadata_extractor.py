@@ -3,11 +3,19 @@ import logging  # For logging events and debugging information
 from pathlib import Path  # For object-oriented filesystem paths
 from typing import Dict, Any  # For type hinting, especially for dictionary structures
 
-from joshlib.gemini import GeminiClient  # Custom client for interacting with the Gemini LLM
-from rich.console import Console  # For rich text output in the console, providing better user experience
+from joshlib.gemini import (
+    GeminiClient,
+)  # Custom client for interacting with the Gemini LLM
+from rich.console import (
+    Console,
+)  # For rich text output in the console, providing better user experience
 
 from config import config  # Application configuration settings
-from database.models import JobInfo, JobStage, StageState  # SQLAlchemy models for database interaction
+from database.models import (
+    JobInfo,
+    JobStage,
+    StageState,
+)  # SQLAlchemy models for database interaction
 from database.session_manager import get_session  # Utility to get a database session
 
 # Initialize logger for this module
@@ -47,14 +55,17 @@ class MetadataExtractor:
         logger.debug(f"Attempting to load metadata from {metadata_path}.")
         if metadata_path.exists():
             try:
-                with open(metadata_path, "r", encoding="utf-8") as f: # Ensure UTF-8 encoding
+                with open(
+                    metadata_path, "r", encoding="utf-8"
+                ) as f:  # Ensure UTF-8 encoding
                     metadata = json.load(f)
                 logger.debug(f"Successfully loaded metadata from {metadata_path}.")
                 return metadata
             except json.JSONDecodeError:
                 # Log JSON decoding errors, which indicate a malformed metadata file
                 logger.error(
-                    f"Error decoding JSON from {metadata_path}. The file might be corrupted or malformed.", exc_info=True
+                    f"Error decoding JSON from {metadata_path}. The file might be corrupted or malformed.",
+                    exc_info=True,
                 )
                 self.console.print(
                     f"[red]Error decoding JSON from {metadata_path}. Check logs for details.[/red]"
@@ -62,7 +73,8 @@ class MetadataExtractor:
             except Exception:
                 # Catch any other potential errors during file reading
                 logger.error(
-                    f"An unexpected error occurred while loading metadata from {metadata_path}.", exc_info=True
+                    f"An unexpected error occurred while loading metadata from {metadata_path}.",
+                    exc_info=True,
                 )
                 self.console.print(
                     f"[red]Error loading metadata from {metadata_path}. Check logs for details.[/red]"
@@ -84,8 +96,12 @@ class MetadataExtractor:
         """
         logger.debug(f"Saving metadata to {metadata_path}.")
         try:
-            with open(metadata_path, "w", encoding="utf-8") as f: # Ensure UTF-8 encoding
-                json.dump(metadata, f, indent=4) # Use indent for pretty-printing the JSON
+            with open(
+                metadata_path, "w", encoding="utf-8"
+            ) as f:  # Ensure UTF-8 encoding
+                json.dump(
+                    metadata, f, indent=4
+                )  # Use indent for pretty-printing the JSON
             logger.debug(f"Successfully saved metadata to {metadata_path}.")
         except Exception:
             # Catch any errors during file writing
@@ -109,7 +125,9 @@ class MetadataExtractor:
         # Load existing metadata or an empty dictionary if not found/valid
         metadata = self._load_metadata_json(metadata_path)
 
-        updated = False # Flag to track if any changes were made to the metadata dictionary
+        updated = (
+            False  # Flag to track if any changes were made to the metadata dictionary
+        )
         # Iterate through all defined metadata categories in the application configuration
         for category in config.METADATA_CATEGORIES:
             # If a category is not present in the loaded metadata or its value is None, initialize it
@@ -126,9 +144,13 @@ class MetadataExtractor:
             self.console.print(
                 f"[green]Initialized metadata.json at {metadata_path}[/green]"
             )
-            logger.info(f"metadata.json at {metadata_path} ensured/initialized with all categories set to None if missing.")
+            logger.info(
+                f"metadata.json at {metadata_path} ensured/initialized with all categories set to None if missing."
+            )
         else:
-            logger.debug("No changes needed during metadata.json initialization as all categories are present and not None.")
+            logger.debug(
+                "No changes needed during metadata.json initialization as all categories are present and not None."
+            )
 
     def _get_transcript_text(self, session, job_id: int) -> str:
         """
@@ -157,11 +179,14 @@ class MetadataExtractor:
         # Validate if the stage exists, was successful, and has a recorded output path
         if (
             not formatted_transcript_stage  # Stage record not found
-            or formatted_transcript_stage.state != StageState.success  # Stage was not successful
+            or formatted_transcript_stage.state
+            != StageState.success  # Stage was not successful
             or not formatted_transcript_stage.output_path  # Output path is not recorded
         ):
-            error_msg = f"Formatted transcript not found or not successful for Job ID {job_id}. " \
-                        f"Stage output_path: {formatted_transcript_stage.output_path if formatted_transcript_stage else 'N/A'}"
+            error_msg = (
+                f"Formatted transcript not found or not successful for Job ID {job_id}. "
+                f"Stage output_path: {formatted_transcript_stage.output_path if formatted_transcript_stage else 'N/A'}"
+            )
             logger.error(error_msg)
             raise FileNotFoundError(error_msg)
 
@@ -174,7 +199,9 @@ class MetadataExtractor:
             raise FileNotFoundError(error_msg)
 
         # Read and return the content of the transcript file
-        with open(formatted_transcript_path, "r", encoding="utf-8") as f: # Ensure UTF-8 encoding
+        with open(
+            formatted_transcript_path, "r", encoding="utf-8"
+        ) as f:  # Ensure UTF-8 encoding
             text = f.read()
             logger.debug(
                 f"Successfully read formatted transcript from {formatted_transcript_path} (length: {len(text)})."
@@ -198,8 +225,12 @@ class MetadataExtractor:
             str: The generated title.
         """
         logger.debug(f"Generating 'title' for Job ID: {self.job_id} using LLM.")
-        prompt_path = self.prompts_dir / "generate-title.txt"  # Path to the specific prompt file
-        prompt_template = prompt_path.read_text(encoding="utf-8")  # Load the prompt template
+        prompt_path = (
+            self.prompts_dir / "generate-title.txt"
+        )  # Path to the specific prompt file
+        prompt_template = prompt_path.read_text(
+            encoding="utf-8"
+        )  # Load the prompt template
         # Format the prompt with the actual sermon text
         prompt = prompt_template.format(SERMON_TEXT=transcript_text)
 
@@ -287,7 +318,7 @@ class MetadataExtractor:
                     self.console.print(
                         f"[red]Job with ID {self.job_id} not found.[/red]"
                     )
-                    return True # Not a quota error, just this job failed
+                    return True  # Not a quota error, just this job failed
 
                 # Construct the path to the job's directory and the metadata file within it
                 job_directory = Path(job.job_directory)
@@ -312,7 +343,7 @@ class MetadataExtractor:
                     self.console.print(
                         f"[red]Could not retrieve transcript for Job ID {self.job_id}. Aborting.[/red]"
                     )
-                    return True # Not a quota error
+                    return True  # Not a quota error
 
                 # Reload metadata after initialization to ensure we have the latest state
                 metadata = self._load_metadata_json(metadata_path)
@@ -324,14 +355,16 @@ class MetadataExtractor:
                     self.console.print(
                         f"[red]Failed to load metadata from {metadata_path} after initialization. Aborting.[/red]"
                     )
-                    return True # Not a quota error
+                    return True  # Not a quota error
 
-                all_categories_filled = True # Flag to track if all categories have been successfully generated
+                all_categories_filled = True  # Flag to track if all categories have been successfully generated
                 # Iterate through each defined metadata category
                 for category in config.METADATA_CATEGORIES:
                     # Check if the current category's value is missing or None
                     if metadata.get(category) is None:
-                        all_categories_filled = False # Mark that at least one category is not filled
+                        all_categories_filled = (
+                            False  # Mark that at least one category is not filled
+                        )
                         logger.info(
                             f"Generating missing metadata: {category} for Job ID: {self.job_id}."
                         )
@@ -374,8 +407,12 @@ class MetadataExtractor:
                                         error_message = gemini_result.error_message
                                         # Check for a quota error specifically
                                         if "quota" in str(error_message).lower():
-                                            logger.critical(f"Gemini API quota exceeded while generating '{category}' for Job ID {self.job_id}.")
-                                            self.console.print("[bold red]Gemini API quota exceeded. Stopping all metadata processing.[/bold red]")
+                                            logger.critical(
+                                                f"Gemini API quota exceeded while generating '{category}' for Job ID {self.job_id}."
+                                            )
+                                            self.console.print(
+                                                "[bold red]Gemini API quota exceeded. Stopping all metadata processing.[/bold red]"
+                                            )
                                             return False  # Signal to stop everything
 
                                         logger.error(
@@ -400,9 +437,7 @@ class MetadataExtractor:
                                     self._save_metadata_json(
                                         metadata, metadata_path
                                     )  # Save error state
-                                    all_categories_filled = (
-                                        False  # This category was not successfully filled
-                                    )
+                                    all_categories_filled = False  # This category was not successfully filled
                         else:
                             # This case indicates a developer error: a category is in config but no _generate_ method exists
                             logger.error(
@@ -427,7 +462,7 @@ class MetadataExtractor:
                     if metadata_stage and metadata_stage.state != StageState.success:
                         metadata_stage.state = StageState.success
                         session.add(metadata_stage)
-                        session.commit() # Commit the change to the database
+                        session.commit()  # Commit the change to the database
                         self.console.print(
                             f"[green]Job {job.job_ulid}: 'extract_metadata' stage marked as SUCCESS.[/green]"
                         )
@@ -447,7 +482,9 @@ class MetadataExtractor:
                         f"[yellow]Job {job.job_ulid}: Not all metadata categories filled. "
                         f"'extract_metadata' stage remains pending/failed.[/yellow]"
                     )
-            return True # Processing for this job is done (or failed for non-quota reason)
+            return (
+                True  # Processing for this job is done (or failed for non-quota reason)
+            )
         except Exception:
             # Catch any critical unexpected errors that occur during the overall process_metadata execution
             logger.critical(
@@ -457,4 +494,4 @@ class MetadataExtractor:
             self.console.print(
                 f"[bold red]A critical error occurred during metadata processing for Job ID {self.job_id}. Check logs for details.[/bold red]"
             )
-            return True # Let the controller decide what to do next
+            return True  # Let the controller decide what to do next

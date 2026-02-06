@@ -50,7 +50,14 @@ METADATA_FILE_NAME = "metadata.json"
 PARAGRAPHS_FILE_NAME = "paragraphs.json"
 FINAL_DOCUMENT_NAME = "finsihed-document.txt"
 
-METADATA_CATEGORIES = ["title", "thesis", "summary", "outline", "tone", "main_text"]  # New constant
+METADATA_CATEGORIES = [
+    "title",
+    "thesis",
+    "summary",
+    "outline",
+    "tone",
+    "main_text",
+]  # New constant
 logger.debug("METADATA_CATEGORIES defined: %s", METADATA_CATEGORIES)
 
 WHISPER_MODEL = "large"
