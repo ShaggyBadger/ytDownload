@@ -343,7 +343,7 @@ class Evaluator:
 
             # Extract Critique
             critique_match = re.search(
-                r"CRITIQUE FOR REDO:\n<<<\n(.*?)\n>>>", response_text, re.DOTALL
+                r"CRITIQUE FOR REDO:\n(.*?)(?=\n\n|\Z)", response_text, re.DOTALL
             )
             if not critique_match:
                 self.logger.error(
