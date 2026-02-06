@@ -5,6 +5,7 @@ to manage download tasks and interact with the database to store video informati
 
 import logging
 import time
+import random
 import subprocess
 import os
 from pathlib import Path
@@ -39,6 +40,9 @@ class Downloader:
             logger.info(f"Found {len(jobs)} jobs to process.")
             for job in jobs:
                 self._download_job(job)
+                time.sleep(
+                    random.uniform(1, 3)
+                )  # Sleep to avoid overwhelming resources
         except Exception as e:
             logger.critical(
                 "An unexpected error occurred during run_all job processing loop.",
@@ -207,6 +211,8 @@ class Downloader:
                 "progress_hooks": [progress_hook],
                 "postprocessor_hooks": [postprocessor_hook],
                 "extractor_args": {"youtube": {"player_client": ["android"]}},
+                # "cookiesfrombrowser": ("chrome",),  # Use cookies from Chrome to handle age restrictions
+                "remote_components": "ejs:github",  # Enable external JavaScript solver
             }
             logger.debug(f"yt-dlp options: {ydl_opts}")
 

@@ -10,11 +10,13 @@ REMOTE_PROJECT_DIR = "/home/alexander/pyProjects/sermonTranscriber"
 REMOTE_SCRIPT_PATH = f"{REMOTE_PROJECT_DIR}/remote_check.py"
 LOCAL_SCRIPT_PATH = Path(__file__).parent / "remote_check.py"
 
+
 def get_status_char(status):
     """Returns a single character representation of a status."""
     if not status:
-        return ' '
+        return " "
     return status[0].upper()
+
 
 def display_remote_db_info():
     """
@@ -52,24 +54,27 @@ def display_remote_db_info():
 
         status_counts = {}
         for item in remote_statuses:
-            status = item.get('status', 'unknown')
+            status = item.get("status", "unknown")
             status_counts[status] = status_counts.get(status, 0) + 1
 
         for status, count in status_counts.items():
             logger.info(f"- {status.capitalize()}: {count}")
 
         logger.info("--- Detailed File Status ---")
-        for item in sorted(remote_statuses, key=lambda x: x.get('mp3_id', 0)):
-            mp3_id = item.get('mp3_id', 'N/A')
-            status = item.get('status', 'N/A')
-            processing_time = item.get('processing_time_seconds', 'N/A')
+        for item in sorted(remote_statuses, key=lambda x: x.get("mp3_id", 0)):
+            mp3_id = item.get("mp3_id", "N/A")
+            status = item.get("status", "N/A")
+            processing_time = item.get("processing_time_seconds", "N/A")
             status_char = get_status_char(status)
-            
-            logger.info(f"  ID: {mp3_id:<3} [{status_char}] - {status} (Processing Time: {processing_time}s)")
+
+            logger.info(
+                f"  ID: {mp3_id:<3} [{status_char}] - {status} (Processing Time: {processing_time}s)"
+            )
         logger.info("-----------------------------")
 
     except Exception as e:
         logger.error(f"An error occurred: {e}")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     display_remote_db_info()

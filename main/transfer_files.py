@@ -1,7 +1,11 @@
 import json
 from pathlib import Path
 import db
-from desktop_connection_utility import sftp_put, run_remote_cmd, create_remote_dir_if_not_exists
+from desktop_connection_utility import (
+    sftp_put,
+    run_remote_cmd,
+    create_remote_dir_if_not_exists,
+)
 from logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -12,6 +16,7 @@ REMOTE_MAIN_DIR = f"{REMOTE_PROJECT_DIR}/main"
 REMOTE_AUDIO_DIR = f"{REMOTE_MAIN_DIR}/audio_files"
 REMOTE_JSON_PATH = f"{REMOTE_MAIN_DIR}/new_files.json"
 
+
 def prepare_and_transfer_files():
     """
     Prepares a list of MP3 files and a corresponding JSON file to be
@@ -21,24 +26,27 @@ def prepare_and_transfer_files():
     local_json_path = None
     try:
         # 1. Get videos ready for transcription
-        videos_to_transcribe = db_session.query(db.Video).filter(
-            db.Video.stage_2_status == "completed",
-            db.Video.stage_3_status == "pending"
-        ).all()
+        videos_to_transcribe = (
+            db_session.query(db.Video)
+            .filter(
+                db.Video.stage_2_status == "completed",
+                db.Video.stage_3_status == "pending",
+            )
+            .all()
+        )
 
         if not videos_to_transcribe:
             logger.info("No new videos to transcribe.")
             return
 
-        logger.info(f"Found {len(videos_to_transcribe)} videos to transfer for transcription.")
+        logger.info(
+            f"Found {len(videos_to_transcribe)} videos to transfer for transcription."
+        )
 
         # 2. Prepare the JSON data
         json_data = []
         for video in videos_to_transcribe:
-            json_data.append({
-                "mp3Id": video.id,
-                "mp3Name": Path(video.mp3_path).name
-            })
+            json_data.append({"mp3Id": video.id, "mp3Name": Path(video.mp3_path).name})
 
         # Create a temporary local JSON file
         local_json_path = Path(__file__).parent / "new_files.json"
@@ -67,7 +75,6 @@ def prepare_and_transfer_files():
             video.stage_3_status = "processing"
         db_session.commit()
 
-
         logger.info("File transfer and remote processing initiated successfully.")
 
     finally:
@@ -75,6 +82,7 @@ def prepare_and_transfer_files():
         # Clean up the temporary JSON file
         if local_json_path and local_json_path.exists():
             local_json_path.unlink()
+
 
 if __name__ == "__main__":
     prepare_and_transfer_files()
@@ -89,23 +97,24 @@ def transfer_all_mp3_info_json():
     local_json_path = None
     try:
         # 1. Get all videos that have completed stage 2
-        all_completed_mp3_videos = db_session.query(db.Video).filter(
-            db.Video.stage_2_status == "completed"
-        ).all()
+        all_completed_mp3_videos = (
+            db_session.query(db.Video)
+            .filter(db.Video.stage_2_status == "completed")
+            .all()
+        )
 
         if not all_completed_mp3_videos:
             logger.info("No videos with completed MP3s found in the database.")
             return
 
-        logger.info(f"Found {len(all_completed_mp3_videos)} videos with completed MP3s.")
+        logger.info(
+            f"Found {len(all_completed_mp3_videos)} videos with completed MP3s."
+        )
 
         # 2. Prepare the JSON data with mp3Id and mp3Name
         json_data = []
         for video in all_completed_mp3_videos:
-            json_data.append({
-                "mp3Id": video.id,
-                "mp3Name": Path(video.mp3_path).name
-            })
+            json_data.append({"mp3Id": video.id, "mp3Name": Path(video.mp3_path).name})
 
         # Create a temporary local JSON file
         local_json_path = Path(__file__).parent / "all_files.json"

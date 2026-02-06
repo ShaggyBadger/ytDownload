@@ -1,153 +1,224 @@
-import re
-import sys
+from joshlib import ollama
 
-
-def parse_evaluator_output(output):
-    # Extract the integer Rating
-    rating_match = re.search(r"Rating:\s*(\d+)", output)
-    rating = int(rating_match.group(1)) if rating_match else 0
-
-    # Extract the Critique specifically between the triple brackets
-    critique_match = re.search(
-        r"CRITIQUE FOR REDO:\s*<<<\s*(.*?)\s*>>>", output, re.DOTALL
-    )
-    critique = (
-        critique_match.group(1).strip() if critique_match else "No feedback provided."
-    )
-
-    return rating, critique
-
-
-tone = "The sermon is delivered with passionate enthusiasm and an urgent, instructional tone, actively engaging the audience through direct challenges and illustrative explanations."
-
-thesis = "All of scripture, both Old and New Testament, tells a single, unified story that points to Jesus Christ as its central hero."
-
-summary = 'The sermon introduces a series on finding Christ in the Old Testament, asserting that the entire Bible is a single story of redemption centered on Jesus. Using the narrative from Luke 24, the preacher illustrates how Jesus taught the disciples on the road to Emmaus that all scriptures point to him. The speaker critiques interpretation methods focused on personal application, advocating instead for reading the Old Testament through a "gospel lens" to understand its Christological implications. Consequently, Old Testament figures like David and Moses should be seen not as moral examples to emulate, but as types that foreshadow Jesus as the ultimate hero who fulfills their roles. The sermon argues that this scriptural focus corrects false, man-made assumptions about Jesus, challenging the tendency to create a comfortable idol rather than submitting to the Christ revealed in the Bible. The message concludes by affirming that Jesus is the central subject of all scripture and the exclusive focus of the gospel.'
-
-prev = "Sometimes we struggle to make sense of the genealogies—the begats and the begotten, this one begat that one, and that one begat that one—and then we lose focus when it goes into the sacrifices and the strange customs of Leviticus. However, some see it simply as a historical narrative of the nation of Israel that has little or no application to the church today, still over the years. Others interpret the Old Testament merely as moral lessons or examples for us to follow, and you hear that in preaching a lot today."
-
-target_paragraph_og = "But let me propose to you today that most people are guilty of practicing the form of biblical interpretation called reader response hermeneutics reader response hermeneutics hermeneutics is simply the method of interpreting the bible and we're all guilty of it whether we are familiar with that phrase or not reader response hermeneutics and this is when we ask what does this mean to me you ever ask that when you're reading the bible well what does this mean to me or you go to a bible study and there's no clear exposition of the text it's just well what does this mean to you somebody will give an answer what's this mean to you somebody gives a completely different answer well what's this mean to me we got 10 people we got 10 different people we got 10 different people we got 10 different answers."
-
-target_paragraph_edited = """But let me propose to you today that most people are guilty of practicing the form of biblical interpretation called reader response hermeneutics. Reader response hermeneutics is simply the method of interpreting the Bible, and we're all guilty of it, whether we know the term or not. Reader response hermeneutics is when we ask, "What does this mean to me?" Have you ever asked that when reading the Bible? Well, what does this mean to me? When we go to a Bible study and there's no clear exposition of the text, it's just, "Well, what does this mean to you?" Someone gives an answer. "What does this mean to you?" Someone else gives a completely different answer. "What does this mean to me?" We have 10 people—we have 10 different answers."""
-
-following = "That's not how to interpret the Bible. There's only one clear interpretation, and we let the Bible interpret itself. We don't read our meaning into the text—we derive our meaning from the text. So, how do we do that? We come to the Bible and ask a series of questions. We have to ask: who wrote the book—understanding the author provides insight into the perspective and purpose of the writing. Who wrote the book? Who was it written to? We must know the audience, and that helps us grasp the culture and the spiritual context of the book. If we're studying a passage, we need to understand its context. We don't just take a verse in isolation—we understand the surrounding chapters and the broader themes of the book itself. Because guess what: I can take one verse and make it mean anything I want it to mean. I've twisted it. Instead, I take the whole book. What is God communicating with me? What is the author's intention? Who was it written to? And we also ask: what's the literal, grammatical, and historical setting? What does the original language say? What's the historical background? What is going on in this passage? What literary style is the author employing—this gives clarity to the passage's meaning."
-
-prompt = """
-You are a Senior Editorial Director specializing in homiletics. You are evaluating a junior editor’s revision of a sermon paragraph.
-
-### EVALUATION CONTEXT
-- INTENDED TONE: {TONE}
-- SERMON THESIS: {THESIS}
-
-### SURROUNDING CONTEXT
-- PREVIOUS PARAGRAPH: <<< {PREV} >>>
-- NEXT PARAGRAPH: <<< {NEXT} >>>
-
-### CONTENT FOR EVALUATION
-- ORIGINAL PARAGRAPH: <<< {OG} >>>
-- EDITED PARAGRAPH: <<< {EP} >>>
-
----
-
-### INSTRUCTIONS
-1. Evaluate the edited paragraph strictly in comparison to the original.
-2. Assess whether the edit preserves meaning, aligns with the sermon thesis, maintains the intended tone, and improves clarity, grammar, flow, and discipline.
-3. Use a 0–10 scale for all categories:
-   - 0 = fails completely
-   - 5 = neutral / no improvement
-   - 10 = perfect improvement or flawless preservation
-4. Only output the following EXACTLY. No extra commentary, no explanations outside of the required fields. Ensure all category names match exactly.
-
-### OUTPUT FORMAT
-
-Rating: <integer 1–10>
-
-Category Scores:
-Meaning Preservation: <0–10>
-Thesis Fidelity: <0–10>
-Tone Adherence: <0–10>
-Clarity & Readability: <0–10>
-Grammar & Mechanics: <0–10>
-Flow & Structural Fit: <0–10>
-Editing Discipline: <0–10>
-
-Summary Reasoning:
-- Meaning Preservation: <reasoning>
-- Thesis Fidelity: <reasoning>
-- Tone Adherence: <reasoning>
-- Clarity & Readability: <reasoning>
-- Grammar & Mechanics: <reasoning>
-- Flow & Structural Fit: <reasoning>
-- Editing Discipline: <reasoning>
-
-CRITIQUE FOR REDO:
-<<<
-(If Rating is < 8, provide 2-3 specific, actionable instructions to fix the paragraph. If Rating is 9-10, write "None.")
->>>
+paragraph = """
+Noah, he became a farmer, but he ended up a failure. He plants the fruit of the vine. He plants the fruit of the vine. He plants the fruit of the vine. He plants the fruit of the vine. He plants the fruit of the vine. He plants the fruit of the vine. He plants the fruit of the vine. He plants the fruit of the vine. He plants the fruit of the vine. He plants making wine, but first he takes the fruit, and then the fruit takes him. Same thing with alcoholics. They take the drink, and then the drink eventually takes them. He begins to follow his desires rather than God's good and perfect design, and this sin leaves him drunk, and like Adam in the garden before him, it leaves him naked and ashamed.
 """
 
-revision_prompt = """
-You are an expert Sermon Editor. Your task is to polish the TARGET PARAGRAPH for maximum impact and clarity.
-
-### CONTEXT
-- **THESIS:** {THESIS}
-- **TONE:** {TONE}
-- **FLOW:** [Prev: {PREV}] -> [Next: {NEXT}]
-
-### FEEDBACK FROM PREVIOUS VERSION
-If the section below contains a critique, you MUST prioritize addressing these specific points in your new edit.
-<<<
-{CRITIQUE}
->>>
-
-### EDITING RULES
-1. **Theological Shield:** Do not change the underlying meaning or scripture references.
-2. **Rhetorical Pulse:** Keep the "spoken" feel. Do not remove repeated words if they provide emotional weight.
-3. **Discipline:** Only fix what is clunky or confusing. If it isn't broken, don't "over-write" it.
-
-TARGET PARAGRAPH:
-<<<
-{OG}
->>>
-
-REVISED PARAGRAPH:
-(Provide ONLY the revised text. No preamble or explanation.)
+prev = """
+Now listen, grapes were a staple and still are in the diet of eastern peoples. In fact, in the Old Testament, wine was considered a blessing from the Son of God and from God. You can read about that in Psalm 104 and Deuteronomy 14, 26. Furthermore, Leviticus 23, 13 notes that wine was used in some of the sacrifices. However, Noah should have known how much wine would become intoxicating to him. So we can't skip this. Let's talk about this for a moment. What is alcohol? Alcohol is a narcotic. It is not a stimulant, and it affects the cerebellum that's the part of the brain that controls balance and cognitive function. Consumption of alcohol impairs this part of the brain, leading people to do foolish and reckless things. It causes them to speak angrily. It causes them to do things they regret. It busts up families. It destroys lives. It causes them to hit people. On the road, when they drive drunk, the Scripture warns in Proverbs 20, verse 1: "Wine is a mocker. Strong drink is raging, and whoever is deceived thereby is not wise." Pretty clear there, isn't it?
 """
 
-full_prompt = prompt.format(
-    TONE=tone,
-    THESIS=thesis,
-    PREV=prev,
-    NEXT=following,
-    OG=target_paragraph_og,
-    EP=target_paragraph_edited,
+next_paragraph = """
+Now, I know different believers have differences of opinions regarding the consumption of alcohol. Some people say, well, as long as it's just a glass of wine at dinner, and I don't get drunk, that's okay. I'm going to let you have your personal convictions. Let me read to you what the Bible says. I can give you my opinion. My opinion means nothing at all. Here's what the Bible says. The Bible condemns drunkenness. 1 Corinthians 6, verse 9 through 10, Paul writes, Do not be deceived. Neither the sexually immoral, nor idolaters, nor adulterers, nor men, who practice homosexuality, nor drunkards, will inherit the kingdom of God. Friends, what does that mean? That means drunkards will not inherit the kingdom of God. That's exactly what it means. Paul writes again, Ephesians 5, verse 18, Do not get drunk with wine, but be filled with the Spirit. And the Spirit is not distilled spirits. It is the Holy Spirit. Friends, drunkenness in the Christian life, they do not go together. You cannot be controlled by a substance and be controlled by the Holy Spirit at the same time. It is absolutely impossible. No one but God should exercise such control over our behaviors and our minds and our attitudes.
+"""
+
+tone = """
+The sermon is delivered with a passionate and urgent tone, blending cautionary warnings against sin with hopeful and encouraging exhortations for Christian vigilance and redemption through Jesus Christ.
+"""
+
+test_prompt = """
+ROLE
+
+You are a professional editor specializing in Christian sermon transcripts generated by Whisper AI.
+
+Your job is to produce a clean, clear, faithful spoken-word version of the Target Paragraph.
+
+You are an editor, not a passive transcriber. You are responsible for fixing transcription errors, improving clarity, and restoring proper spoken flow.
+
+However, you must preserve the speaker’s exact meaning, theology, intent, tone, and argument.
+
+You do not add new ideas. You do not improve theology. You do not reinterpret meaning.
+
+You clarify what the speaker said. You do not change what the speaker meant.
+
+CORE OBJECTIVE (HIGHEST PRIORITY)
+
+Produce the clearest and most natural spoken-word version of the Target Paragraph while preserving its exact meaning, theology, and intent.
+
+The result should sound like the same speaker, but without transcription errors, mechanical repetition, or broken phrasing.
+
+MEANING PRESERVATION RULES (NON-NEGOTIABLE)
+
+Preserve Meaning Exactly
+Do not change, reinterpret, alter, or expand the speaker’s meaning, theology, claims, or arguments.
+
+No New Content
+Do not add theology, conclusions, interpretations, illustrations, or explanatory phrases not present in the Target Paragraph.
+
+Preserve Argument Structure
+Do not reorder arguments or change the logical sequence of ideas.
+
+Preserve Theological Force
+Do not soften, qualify, sanitize, intellectualize, or weaken theological or confrontational statements.
+
+Preserve Unique Ideas
+Do not remove any sentence or phrase that introduces a unique idea or theological point.
+
+TRANSCRIPTION ERROR REMOVAL RULES (REQUIRED)
+
+You must actively remove transcription artifacts, including:
+
+Stuttering loops
+If a word or phrase is repeated mechanically (especially 3 or more times in immediate succession), condense it to a single clear instance.
+
+Near-repeated loops
+If a phrase repeats with minor variation but clearly results from transcription error, condense it appropriately.
+
+False starts
+Remove abandoned sentence starts when the intended sentence is clear.
+
+Filler sounds
+Remove filler words such as “um,” “uh,” and similar transcription noise.
+
+Broken fragments
+Repair incomplete or broken sentences when the intended meaning is obvious.
+
+Transcription mistakes
+Correct obvious homophone errors and incorrect words caused by transcription.
+
+CLARITY AND FLOW IMPROVEMENT RULES (AUTHORIZED AND EXPECTED)
+
+You are expected to improve:
+
+• grammar
+• punctuation
+• sentence structure
+• clarity
+• spoken-word flow
+• readability
+
+You may:
+
+• rephrase sentences for clarity
+• combine fragments into complete sentences
+• fix awkward or broken phrasing
+• tighten redundant wording
+
+You must NOT change meaning while doing so.
+
+Prioritize spoken-word clarity, not formal written style.
+
+VOICE AND TONE PRESERVATION
+
+Preserve the speaker’s natural voice.
+
+If the speaker is blunt, keep it blunt.
+
+If confrontational, keep it confrontational.
+
+If informal, keep it informal.
+
+Do not make the speaker sound academic, polished, or artificial unless necessary for clarity.
+
+The edited result must sound like the same human speaker.
+
+CONTEXT USAGE RULES
+
+You may use the Preceding and Following paragraphs to:
+
+• clarify ambiguous references
+• resolve transcription mistakes
+• maintain tense consistency
+• ensure continuity
+
+You must NOT use surrounding paragraphs to:
+
+• introduce new ideas into the Target Paragraph
+• import phrases unnecessarily
+• expand the Target Paragraph’s meaning
+
+Context is for clarification only, not expansion.
+
+PROHIBITED ACTIONS
+
+Never:
+
+• add theology
+• add interpretations
+• add conclusions
+• summarize content
+• remove unique theological ideas
+• change argument order
+• rewrite in a different voice
+• turn spoken delivery into formal essay style
+
+You are correcting transcription, not rewriting the sermon.
+
+EXECUTION INSTRUCTIONS
+
+Edit ONLY the Target Paragraph.
+
+Use context only to ensure accuracy and continuity.
+
+Produce the cleanest, clearest spoken-word version while preserving exact meaning and theology.
+
+INTERNAL ADVERSARIAL REVIEW (MANDATORY, DO NOT OUTPUT)
+
+You must perform this internal review before returning your final answer.
+
+STEP 1 — Editor Pass
+Create the edited paragraph according to all rules.
+
+STEP 2 — Auditor Pass
+Now act as a hostile Auditor whose job is to detect violations.
+
+The Auditor must check for:
+
+• added ideas or theology
+• removed unique ideas
+• altered meaning
+• softened theological force
+• reordered arguments
+• missed transcription loops
+• unnecessary over-editing
+
+If any violation is found, correct it immediately.
+
+The Auditor is more conservative than the Editor. When uncertain, prefer the original wording.
+
+STEP 3 — Finalize
+Return only the final corrected paragraph after audit.
+
+Do not output the audit.
+
+INPUT PAYLOAD
+
+Tone of Sermon:
+{SPEAKER_TONE}
+
+Preceding Paragraph (context only — DO NOT edit):
+{PARAGRAPH_PREV}
+
+Target Paragraph (EDIT THIS ONE):
+{PARAGRAPH_TARGET}
+
+Following Paragraph (context only — DO NOT edit):
+{PARAGRAPH_NEXT}
+
+OUTPUT INSTRUCTIONS
+
+Return ONLY the edited Target Paragraph.
+
+Do NOT include:
+
+• explanations
+• commentary
+• labels
+• markdown
+• notes
+
+Return plain text only.
+"""
+
+final_prompt = (
+    test_prompt.replace("{SPEAKER_TONE}", tone)
+    .replace("{PARAGRAPH_PREV}", prev)
+    .replace("{PARAGRAPH_TARGET}", paragraph)
+    .replace("{PARAGRAPH_NEXT}", next_paragraph)
 )
 
-from joshlib.ollama import OllamaClient
+client = ollama.OllamaClient(temperature=0.7)
 
-client = OllamaClient(temperature=0.1)
-response = client.submit_prompt(full_prompt)
-print("response...")
-print(response)
-print("\n\n******\nRunning revision....")
+response_obj = client.submit_prompt(final_prompt)
 
-rating, critique = parse_evaluator_output(response)
-print(f"Rating: {rating}")
-print(f"Critique: {critique}")
-if "none" in critique.lower():
-    print("Ending program: No critique to process.")
-    sys.exit()
-print("******\n\n")
-
-full_revision_prompt = revision_prompt.format(
-    THESIS=thesis,
-    TONE=tone,
-    PREV=prev,
-    NEXT=following,
-    CRITIQUE=critique,
-    OG=target_paragraph_og,
-)
-
-editor_client = OllamaClient(temperature=0.7)
-response = editor_client.submit_prompt(full_revision_prompt)
-print(response)
+print(response_obj)

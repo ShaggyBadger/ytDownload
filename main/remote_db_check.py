@@ -11,13 +11,17 @@ logger = setup_logger(__name__)
 REMOTE_PROJECT_DIR = "/home/alexander/pyProjects/sermonTranscriber"
 REMOTE_SCRIPT_PATH = f"{REMOTE_PROJECT_DIR}/remote_check.py"
 LOCAL_SCRIPT_PATH = Path(__file__).parent / "remote_check.py"
-LOCAL_TRANSCRIPTS_DIR = Path(__file__).parent / "transcripts" # This might be deprecated soon
+LOCAL_TRANSCRIPTS_DIR = (
+    Path(__file__).parent / "transcripts"
+)  # This might be deprecated soon
+
 
 def get_status_char(status):
     """Returns a single character representation of a status."""
     if not status:
-        return ' '
+        return " "
     return status[0].upper()
+
 
 def check_remote_status_and_fetch_completed():
     """
@@ -63,15 +67,21 @@ def check_remote_status_and_fetch_completed():
         for remote_status in remote_statuses:
             video_id = remote_status.get("mp3_id")
             status = remote_status.get("status")
-            remote_transcript_path = remote_status.get("transcript_path") # Renamed for clarity
+            remote_transcript_path = remote_status.get(
+                "transcript_path"
+            )  # Renamed for clarity
             transcript_exists = remote_status.get("transcript_exists")
 
             if status == "complete" and transcript_exists:
-                video = db_session.query(db.Video).filter(db.Video.id == video_id).first()
+                video = (
+                    db_session.query(db.Video).filter(db.Video.id == video_id).first()
+                )
                 if video:
-                    paths = get_video_paths(video) # <--- Get all paths
+                    paths = get_video_paths(video)  # <--- Get all paths
                     if not paths:
-                        logger.error(f"Could not get paths for video {video.id} - {video.yt_id}")
+                        logger.error(
+                            f"Could not get paths for video {video.id} - {video.yt_id}"
+                        )
                         continue
 
                     # local_transcript_path should now be the raw_transcript_path from our utils
@@ -79,7 +89,9 @@ def check_remote_status_and_fetch_completed():
 
                     # Download if it doesn't exist
                     if not local_transcript_path.exists():
-                        logger.info(f"Local transcript for video ID {video_id} not found. Redownloading from {remote_transcript_path}...")
+                        logger.info(
+                            f"Local transcript for video ID {video_id} not found. Redownloading from {remote_transcript_path}..."
+                        )
                         sftp_get(remote_transcript_path, str(local_transcript_path))
                         logger.info(f"Downloaded transcript to {local_transcript_path}")
 
@@ -87,36 +99,47 @@ def check_remote_status_and_fetch_completed():
                     # Update video status for stage 3 if needed
                     if video.stage_3_status != "complete":
                         video.stage_3_status = "complete"
-                        video.transcript_path = paths["transcript_path"] # <--- Use path from utils
+                        video.transcript_path = paths[
+                            "transcript_path"
+                        ]  # <--- Use path from utils
                         made_changes = True
                         logger.info(f"Updated stage 3 status for video ID: {video_id}")
 
                     # Check for and create transcript processing entry if needed
-                    tp = db_session.query(db.TranscriptProcessing).filter(db.TranscriptProcessing.video_id == video.id).first()
+                    tp = (
+                        db_session.query(db.TranscriptProcessing)
+                        .filter(db.TranscriptProcessing.video_id == video.id)
+                        .first()
+                    )
                     if not tp:
                         # Read the transcript to get the word count
-                        with open(local_transcript_path, 'r') as f:
+                        with open(local_transcript_path, "r") as f:
                             raw_text = f.read()
                         word_count = len(raw_text.split())
 
                         new_transcript_processing = db.TranscriptProcessing(
                             video_id=video.id,
-                            raw_transcript_path=paths["raw_transcript_path"], # <--- Use path from utils
+                            raw_transcript_path=paths[
+                                "raw_transcript_path"
+                            ],  # <--- Use path from utils
                             starting_word_count=word_count,
-                            status="raw_transcript_received"
+                            status="raw_transcript_received",
                         )
                         db_session.add(new_transcript_processing)
-                        
+
                         # Also update stage 4 status on the video
                         video.stage_4_status = "completed"
                         made_changes = True
-                        logger.info(f"Created transcript_processing entry and updated stage 4 status for video ID: {video_id}")
+                        logger.info(
+                            f"Created transcript_processing entry and updated stage 4 status for video ID: {video_id}"
+                        )
 
                     if made_changes:
                         db_session.commit()
 
     finally:
         db_session.close()
+
 
 if __name__ == "__main__":
     check_remote_status_and_fetch_completed()

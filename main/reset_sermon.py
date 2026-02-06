@@ -6,6 +6,7 @@ from post_process_transcripts import reset_transcript_status
 
 logger = setup_logger(__name__)
 
+
 def delete_transcript_files(transcript):
     """Deletes all generated post-processing files for a transcript."""
     logger.info(f"Attempting to delete files for transcript ID: {transcript.id}")
@@ -25,13 +26,15 @@ def delete_transcript_files(transcript):
         video_dir = Path(transcript.raw_transcript_path).parent
 
         # sermon_export.txt
-        files_to_delete.append(str(video_dir / 'sermon_export.txt'))
+        files_to_delete.append(str(video_dir / "sermon_export.txt"))
 
         # paragraphs.json
-        files_to_delete.append(str(video_dir / 'paragraphs.json'))
-        
+        files_to_delete.append(str(video_dir / "paragraphs.json"))
+
         # .edited.txt
-        files_to_delete.append(str(Path(transcript.raw_transcript_path).with_suffix('.edited.txt')))
+        files_to_delete.append(
+            str(Path(transcript.raw_transcript_path).with_suffix(".edited.txt"))
+        )
 
     for file_path in files_to_delete:
         if file_path and os.path.exists(file_path):
@@ -43,13 +46,19 @@ def delete_transcript_files(transcript):
         elif file_path:
             logger.warning(f"File not found, skipping delete: {file_path}")
 
+
 def choose_and_reset_sermon():
     """Lists all transcripts and prompts the user to select one to reset."""
     db_session = SessionLocal()
     try:
         logger.info("--- Select a Sermon to Reset ---")
-        results = db_session.query(TranscriptProcessing, Video.yt_id).join(Video, TranscriptProcessing.video_id == Video.id).order_by(TranscriptProcessing.id).all()
-        
+        results = (
+            db_session.query(TranscriptProcessing, Video.yt_id)
+            .join(Video, TranscriptProcessing.video_id == Video.id)
+            .order_by(TranscriptProcessing.id)
+            .all()
+        )
+
         if not results:
             logger.info("No transcripts found to reset.")
             input("Press Enter to return to the main menu...")
@@ -57,24 +66,34 @@ def choose_and_reset_sermon():
 
         logger.info("--- Available Transcripts ---")
         for transcript, yt_id in results:
-            logger.info(f"ID: {transcript.id}, YT_ID: {yt_id}, Status: {transcript.status}")
+            logger.info(
+                f"ID: {transcript.id}, YT_ID: {yt_id}, Status: {transcript.status}"
+            )
         logger.info("--------------------------")
-        
+
         choice = input("Enter the ID of the transcript to reset (or 'b' to go back): ")
-        if choice.lower() == 'b':
+        if choice.lower() == "b":
             return
 
         transcript_id = int(choice)
-        transcript_to_reset = db_session.query(TranscriptProcessing).filter(TranscriptProcessing.id == transcript_id).first()
+        transcript_to_reset = (
+            db_session.query(TranscriptProcessing)
+            .filter(TranscriptProcessing.id == transcript_id)
+            .first()
+        )
 
         if transcript_to_reset:
-            confirm = input(f"Are you sure you want to delete all generated files and reset transcript ID {transcript_id}? (y/n): ")
-            if confirm.lower() == 'y':
+            confirm = input(
+                f"Are you sure you want to delete all generated files and reset transcript ID {transcript_id}? (y/n): "
+            )
+            if confirm.lower() == "y":
                 # 1. Delete generated files
                 delete_transcript_files(transcript_to_reset)
                 # 2. Reset DB status
                 reset_transcript_status(transcript_id, db_session)
-                logger.info(f"--- Transcript ID: {transcript_id} has been reset and is ready for reprocessing. ---")
+                logger.info(
+                    f"--- Transcript ID: {transcript_id} has been reset and is ready for reprocessing. ---"
+                )
             else:
                 logger.info("Reset cancelled.")
         else:

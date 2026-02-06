@@ -6,6 +6,7 @@ from logger import setup_logger
 
 logger = setup_logger(__name__)
 
+
 def _get_video_duration_str(db_session, video_id: int) -> str:
     """
     Fetches the video duration from the database and formats it as HH:MM:SS.
@@ -22,8 +23,11 @@ def _get_video_duration_str(db_session, video_id: int) -> str:
 
         return f"{hours:02}:{minutes:02}:{seconds:02}"
     except Exception as e:
-        logger.error(f"Error fetching video duration for video_id {video_id}: {e}", exc_info=True)
+        logger.error(
+            f"Error fetching video duration for video_id {video_id}: {e}", exc_info=True
+        )
         return None
+
 
 def get_video_paths(video: Video):
     """
@@ -33,23 +37,28 @@ def get_video_paths(video: Video):
         return None
 
     DOWNLOADS_DIR = Path(__file__).parent / "downloads"
-    video_dir_name = f'{video.id}_{video.yt_id}'
+    video_dir_name = f"{video.id}_{video.yt_id}"
     video_dir = DOWNLOADS_DIR / video_dir_name
-    
+
     base_filename = f"{video.yt_id}_trimmed"
 
     return {
         "video_dir": str(video_dir),
         "download_path": str(video_dir),
         "mp3_path": str(video_dir / f"{base_filename}.mp3"),
-        "transcript_path": str(video_dir / f"{base_filename}.txt"), # This path is for the initial raw transcript from whisper
-        "raw_transcript_path": str(video_dir / f"{base_filename}.txt"), # This path is for the initial raw transcript for TranscriptProcessing
+        "transcript_path": str(
+            video_dir / f"{base_filename}.txt"
+        ),  # This path is for the initial raw transcript from whisper
+        "raw_transcript_path": str(
+            video_dir / f"{base_filename}.txt"
+        ),  # This path is for the initial raw transcript for TranscriptProcessing
         "initial_cleaning_path": str(video_dir / f"{base_filename}.initial.txt"),
         "secondary_cleaning_path": str(video_dir / f"{base_filename}.secondary.txt"),
         "final_pass_path": str(video_dir / f"{base_filename}.final.txt"),
         "metadata_path": str(video_dir / f"{base_filename}.meta.txt"),
         "book_ready_path": str(video_dir / f"{base_filename}.book.txt"),
     }
+
 
 def get_video_from_path(file_path: str, db_session):
     """
@@ -61,6 +70,7 @@ def get_video_from_path(file_path: str, db_session):
         video_id = int(match.group(1))
         return db_session.query(Video).filter_by(id=video_id).first()
     return None
+
 
 def adjust_dir_names():
     """
@@ -81,7 +91,7 @@ def adjust_dir_names():
         paths = get_video_paths(video)
         if not paths:
             continue
-        
+
         new_dir = Path(paths["video_dir"])
 
         # Find the old directory - it could be just the yt_id or something else
@@ -94,14 +104,14 @@ def adjust_dir_names():
                 # and that it's not a directory that just happens to contain the yt_id
                 # but isn't directly related to *this* video's old naming convention.
                 # A common old naming convention would be just the yt_id itself.
-                if item.name == video.yt_id: # Direct old name match
+                if item.name == video.yt_id:  # Direct old name match
                     old_dir = item
                     break
                 # Or if it's already the new format, we don't need to rename
                 if item.name == new_dir.name:
-                    old_dir = None # Already correct, no rename needed
+                    old_dir = None  # Already correct, no rename needed
                     break
-        
+
         # 1. RENAME DIRECTORY ON DISK
         if old_dir and old_dir.exists() and not new_dir.exists():
             try:
@@ -118,14 +128,16 @@ def adjust_dir_names():
         elif old_dir and new_dir.exists() and old_dir.exists():
             # Both exist, this should ideally not happen or means a conflict.
             # For now, we'll assume the new_dir is the correct one if it exists.
-            print(f"Warning: Both {old_dir.name} and {new_dir.name} exist for video {video.id}. Proceeding with new_dir.")
-        
+            print(
+                f"Warning: Both {old_dir.name} and {new_dir.name} exist for video {video.id}. Proceeding with new_dir."
+            )
+
         # 2. UPDATE VIDEO DATABASE PATHS
         video_paths_changed = False
         if video.download_path != paths["download_path"]:
             video.download_path = paths["download_path"]
             video_paths_changed = True
-        
+
         if video.mp3_path != paths["mp3_path"]:
             video.mp3_path = paths["mp3_path"]
             video_paths_changed = True
@@ -136,48 +148,68 @@ def adjust_dir_names():
 
         if video_paths_changed:
             count_video_paths_updated += 1
-        
+
         # 3. UPDATE TRANSCRIPTPROCESSING DATABASE PATHS
-        transcript_processing_entry = db.query(TranscriptProcessing).filter_by(video_id=video.id).first()
+        transcript_processing_entry = (
+            db.query(TranscriptProcessing).filter_by(video_id=video.id).first()
+        )
         if transcript_processing_entry:
             transcript_paths_changed = False
-            
-            if transcript_processing_entry.raw_transcript_path != paths["raw_transcript_path"]:
-                transcript_processing_entry.raw_transcript_path = paths["raw_transcript_path"]
+
+            if (
+                transcript_processing_entry.raw_transcript_path
+                != paths["raw_transcript_path"]
+            ):
+                transcript_processing_entry.raw_transcript_path = paths[
+                    "raw_transcript_path"
+                ]
                 transcript_paths_changed = True
-            
-            if transcript_processing_entry.initial_cleaning_path != paths["initial_cleaning_path"]:
-                transcript_processing_entry.initial_cleaning_path = paths["initial_cleaning_path"]
+
+            if (
+                transcript_processing_entry.initial_cleaning_path
+                != paths["initial_cleaning_path"]
+            ):
+                transcript_processing_entry.initial_cleaning_path = paths[
+                    "initial_cleaning_path"
+                ]
                 transcript_paths_changed = True
-            
-            if transcript_processing_entry.secondary_cleaning_path != paths["secondary_cleaning_path"]:
-                transcript_processing_entry.secondary_cleaning_path = paths["secondary_cleaning_path"]
+
+            if (
+                transcript_processing_entry.secondary_cleaning_path
+                != paths["secondary_cleaning_path"]
+            ):
+                transcript_processing_entry.secondary_cleaning_path = paths[
+                    "secondary_cleaning_path"
+                ]
                 transcript_paths_changed = True
-            
+
             if transcript_processing_entry.final_pass_path != paths["final_pass_path"]:
                 transcript_processing_entry.final_pass_path = paths["final_pass_path"]
                 transcript_paths_changed = True
-            
+
             if transcript_processing_entry.metadata_path != paths["metadata_path"]:
                 transcript_processing_entry.metadata_path = paths["metadata_path"]
                 transcript_paths_changed = True
-            
+
             if transcript_processing_entry.book_ready_path != paths["book_ready_path"]:
                 transcript_processing_entry.book_ready_path = paths["book_ready_path"]
                 transcript_paths_changed = True
-            
+
             if transcript_paths_changed:
                 count_transcript_paths_updated += 1
 
     # 4. COMMIT CHANGES
     try:
         db.commit()
-        print(f"Success! Renamed {count_renamed} folders, updated {count_video_paths_updated} video records, and {count_transcript_paths_updated} transcript processing records.")
+        print(
+            f"Success! Renamed {count_renamed} folders, updated {count_video_paths_updated} video records, and {count_transcript_paths_updated} transcript processing records."
+        )
     except Exception as e:
         db.rollback()
         print(f"Database Error: {e}")
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     adjust_dir_names()

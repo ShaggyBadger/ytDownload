@@ -23,21 +23,25 @@ migration.run_migration()
 # This is idempotent.
 Base.metadata.create_all(bind=engine)
 
+
 def display_menu():
     """Displays the main menu."""
-    logger.info("\n--- Main Menu ---\n"
-          "1: Process video links into the database\n"
-          "2: Download and Trim MP3s\n"
-          "3: Display DB Status\n"
-          "4: Transfer files for transcription\n"
-          "5: Transcribe Audio\n"
-          "6: Check remote DB status and fetch completed transcripts\n"
-          "7: Post-process transcripts\n"
-          "8: View Transcripts\n"
-          "9: Clean Sermon Transcripts up\n"
-          "10: Reset a Sermon's Post-processing\n"
-          "q: Quit\n"
-          "-----------------")
+    logger.info(
+        "\n--- Main Menu ---\n"
+        "1: Process video links into the database\n"
+        "2: Download and Trim MP3s\n"
+        "3: Display DB Status\n"
+        "4: Transfer files for transcription\n"
+        "5: Transcribe Audio\n"
+        "6: Check remote DB status and fetch completed transcripts\n"
+        "7: Post-process transcripts\n"
+        "8: View Transcripts\n"
+        "9: Clean Sermon Transcripts up\n"
+        "10: Reset a Sermon's Post-processing\n"
+        "q: Quit\n"
+        "-----------------"
+    )
+
 
 def main():
     """Main function to run the controller."""
@@ -46,32 +50,33 @@ def main():
         choice = input("Enter your choice: ")
         logger.info(f"User choice: {choice}")
 
-        if choice == '1':
+        if choice == "1":
             process_links.process_video_links()
-        elif choice == '2':
+        elif choice == "2":
             selected_videos = fetch_mp3.select_videos_to_process()
             fetch_mp3.process_selected_videos(selected_videos)
-        elif choice == '3':
+        elif choice == "3":
             db_info.display_db_info()
-        elif choice == '4':
+        elif choice == "4":
             transfer_files.prepare_and_transfer_files()
-        elif choice == '5':
+        elif choice == "5":
             transcribe.process_transcription()
-        elif choice == '6':
+        elif choice == "6":
             remote_db_check.check_remote_status_and_fetch_completed()
-        elif choice == '7':
+        elif choice == "7":
             post_process_transcripts.post_process_transcripts()
-        elif choice == '8':
+        elif choice == "8":
             view_transcripts.view_transcripts()
-        elif choice == '9':
+        elif choice == "9":
             clean_sermon_transcripts.clean_sermon_transcripts()
-        elif choice == '10':
+        elif choice == "10":
             reset_sermon.choose_and_reset_sermon()
-        elif choice.lower() == 'q':
+        elif choice.lower() == "q":
             logger.info("Exiting.")
             break
         else:
             logger.warning("Invalid choice. Please try again.")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

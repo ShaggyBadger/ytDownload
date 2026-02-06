@@ -5,7 +5,7 @@ from pathlib import Path
 import os
 
 # Load environment variables from the .env file in the same directory (main/)
-load_dotenv(dotenv_path=Path(__file__).resolve().parent / '.env')
+load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
 
 SSH_HOST = os.getenv("SSH_HOST")
 SSH_USER = os.getenv("SSH_USER")
@@ -13,10 +13,16 @@ SSH_PASSWORD = os.getenv("SSH_PASSWORD")
 SSH_PORT = os.getenv("SSH_PORT")
 
 # Validate that all required environment variables are present
-required_vars = {"SSH_HOST": SSH_HOST, "SSH_USER": SSH_USER, "SSH_PASSWORD": SSH_PASSWORD, "SSH_PORT": SSH_PORT}
+required_vars = {
+    "SSH_HOST": SSH_HOST,
+    "SSH_USER": SSH_USER,
+    "SSH_PASSWORD": SSH_PASSWORD,
+    "SSH_PORT": SSH_PORT,
+}
 for var_name, var_value in required_vars.items():
     if not var_value:
         raise ValueError(f"Missing required environment variable: {var_name}")
+
 
 def _make_client():
     client = paramiko.SSHClient()
@@ -56,6 +62,7 @@ def run_remote_cmd(cmd: str):
 def create_remote_dir_if_not_exists(remote_path: str):
     """Creates a remote directory if it doesn't exist."""
     run_remote_cmd(f"mkdir -p {remote_path}")
+
 
 def sftp_put(local_path: str, remote_path: str):
     client = None

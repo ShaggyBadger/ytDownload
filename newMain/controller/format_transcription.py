@@ -408,19 +408,22 @@ class FormatTranscriptionController:
 
                             if output_file_path is None:
                                 logger.warning(
-                                    f"Formatter returned None for job {job.job_ulid}. Marking as failed."
+                                    f"Formatter returned None for job {job.job_ulid}. Marking as failed and stopping all further processing."
                                 )
                                 status.update(
-                                    f"[yellow]Skipping job [cyan]{job.job_ulid}[/cyan] due to formatting failure.[/yellow]"
+                                    f"[yellow]Stopping all further formatting for [cyan]{job.job_ulid}[/cyan] due to critical failure (e.g., Gemini quota).[/yellow]"
+                                )
+                                self.console.print(
+                                    "[bold red]Critical error encountered (e.g., Gemini API quota exceeded). Stopping all further formatting tasks.[/bold red]"
                                 )
                                 format_gemini_stage.state = StageState.failed
-                                format_gemini_stage.last_error = "Formatting failed: Gemini API quota exceeded, API error, or excessive word loss after retries."
+                                format_gemini_stage.last_error = "Formatting failed: Gemini API quota exceeded, API error, or excessive word loss after retries. Processing halted."
                                 session.add(format_gemini_stage)
                                 session.commit()
                                 logger.info(
-                                    f"Updated format_gemini stage to FAILED for Job {job.job_ulid} in DB."
+                                    f"Updated format_gemini stage to FAILED for Job {job.job_ulid} in DB and breaking loop."
                                 )
-                                continue
+                                break  # <--- THIS IS THE KEY CHANGE: Stop the loop
 
                             format_gemini_stage.state = StageState.success
                             format_gemini_stage.output_path = str(output_file_path)
