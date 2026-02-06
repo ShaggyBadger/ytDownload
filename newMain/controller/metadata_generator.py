@@ -142,6 +142,7 @@ def _display_jobs(jobs, title="Available Jobs"):
 def _run_metadata_processing(job_ids: list[int]):
     """
     Iterates through job IDs and triggers the metadata processing service.
+    Stops if a Gemini quota error is encountered.
     """
     logger.info(f"Running metadata processing for job IDs: {job_ids}")
     if not job_ids:
@@ -155,13 +156,27 @@ def _run_metadata_processing(job_ids: list[int]):
         logger.info(f"Processing metadata for Job ID: {job_id}.")
         try:
             extractor = MetadataExtractor(job_id=job_id)
-            extractor.process_metadata()
-            logger.info(
-                f"Successfully finished processing metadata for Job ID: {job_id}."
-            )
-            console.print(
-                f"[bold green]Finished processing metadata for Job ID: {job_id}.[/bold green]\n"
-            )
+            # The process_metadata method now returns False specifically on a quota error
+            should_continue = extractor.process_metadata()
+
+            if should_continue:
+                logger.info(
+                    f"Successfully finished processing metadata for Job ID: {job_id}."
+                )
+                console.print(
+                    f"[bold green]Finished processing metadata for Job ID: {job_id}.[/bold green]\n"
+                )
+            else:
+                # A quota error occurred
+                logger.warning(
+                    "Metadata processing aborted due to Gemini API quota error."
+                )
+                console.print(
+                    "[bold red]Gemini API quota has been hit. Aborting further processing.[/bold red]"
+                )
+                Prompt.ask("Press Enter to return to the menu...")
+                break  # Stop processing the rest of the jobs
+
         except Exception:
             logger.error(
                 f"Error processing metadata for Job ID: {job_id}.", exc_info=True

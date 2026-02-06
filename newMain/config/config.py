@@ -50,7 +50,7 @@ METADATA_FILE_NAME = "metadata.json"
 PARAGRAPHS_FILE_NAME = "paragraphs.json"
 FINAL_DOCUMENT_NAME = "finsihed-document.txt"
 
-METADATA_CATEGORIES = ["title", "thesis", "summary", "outline", "tone"]  # New constant
+METADATA_CATEGORIES = ["title", "thesis", "summary", "outline", "tone", "main_text"]  # New constant
 logger.debug("METADATA_CATEGORIES defined: %s", METADATA_CATEGORIES)
 
 WHISPER_MODEL = "large"
@@ -136,11 +136,12 @@ _josh_favorite_spinners = [
     "toggle7",
     "toggle10",
     "dots10",
+    "dots12",
     "growVertical",
     "pong",
     "bouncingBall",
 ]
-SPINNER = "toggle9"
+SPINNER = "point"
 logger.debug("Default SPINNER set to '%s'", SPINNER)
 
 

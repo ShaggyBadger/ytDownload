@@ -20,7 +20,7 @@ class Editor:
         """Initializes the editor for a specific job."""
         self.job_id = job_id
         self.console = Console()
-        self.ollama_client = OllamaClient(temperature=0.65)
+        self.ollama_client = OllamaClient(temperature=0.15)
         logger.debug(f"Editor service initialized for Job ID: {self.job_id}")
 
     def _build_paragraphs_json_data(self, transcript_text, job_directory):
