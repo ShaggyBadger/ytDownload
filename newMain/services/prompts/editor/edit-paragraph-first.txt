@@ -56,7 +56,7 @@ Mechanical repetition caused by transcription errors MUST be collapsed to a sing
 
 This rule overrides Preserve Argument Structure for repeated loops.
 
-Repeated phrases occurring 3 or more times in immediate succession are ALWAYS transcription artifacts and MUST be reduced to one instance.
+Repeated phrases occurring 2 or more times in immediate succession are ALWAYS transcription artifacts and MUST be reduced to one instance.
 
 Failure to collapse loops is a critical error.
 
@@ -75,7 +75,7 @@ He plants the fruit of the vine.
 You must actively remove transcription artifacts, including:
 
 Stuttering loops
-If a word or phrase is repeated mechanically (especially 3 or more times in immediate succession), condense it to a single clear instance.
+If a word or phrase is repeated mechanically (especially 2 or more times in immediate succession), condense it to a single clear instance.
 
 Near-repeated loops
 If a phrase repeats with minor variation but clearly results from transcription error, condense it appropriately.
