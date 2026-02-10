@@ -1,155 +1,139 @@
 import logging
 from rich.console import Console
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Tuple
 import time
 import re
+import json
 
 from joshlib.gemini import GeminiClient
+from joshlib.ollama import OllamaClient, OllamaProcessingError
 from config import config
 
+# set up the logging
 logger = logging.getLogger(__name__)
 
+# Silence paramiko's verbose logging and cryptography
+logging.getLogger("paramiko").setLevel(logging.WARNING)
+logging.getLogger("cryptography").setLevel(logging.WARNING)
 
-class Formatter:
+
+# Rename OllamaFormatter to Formatter
+class Formatter: # Renamed from OllamaFormatter
     def __init__(self):
         self.console = Console()
-        self.gemini_client = GeminiClient()
-        logger.debug("Formatter service initialized.")
+        self.ollama_client = OllamaClient(model='llama3.2:3b', temperature=0.1)
+        self.sentence_chunk_size = 25
+        self.context_paragraph_count = 1
+        logger.debug("Formatter initialized (formerly OllamaFormatter).")
+
+    def _clean_text(self, text: str) -> str:
+        """Fixes hard line breaks, repetitive 'stutters', and extra whitespace."""
+        # 1. Remove hard line breaks (single newlines)
+        text = re.sub(r'(?<!\n)\n(?!\n)', ' ', text)
+        
+        # 2. Collapse all whitespace into single spaces
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        # 3. Deduplicate exact sentence stutters (common in sermon AI transcripts)
+        # Finds phrases repeated 2-3 times in a row and keeps only one.
+        text = re.sub(r'(.+?)\1+', r'\1', text)
+        
+        return text
 
     def run(self, job_directory: Path, input_file_path: Path) -> Optional[Path]:
-        """
-        Orchestrates the formatting of a transcription. Reads the input,
-        formats it using Gemini, and saves the result to disk.
-        """
-        logger.info(
-            f"Starting transcription formatting for job directory: {job_directory}, input file: {input_file_path}"
-        )
-        max_retries = 3
-        word_loss_threshold = 1.5  # Percentage
-
         try:
-            transcript_text = input_file_path.read_text(encoding="utf-8")
-            original_word_count = self._count_words(transcript_text)
-            logger.debug(f"Original transcript word count: {original_word_count}")
-
-            formatted_text = None
-
-            for attempt in range(max_retries):
-                status_msg = f"Formatting text (Attempt {attempt + 1}/{max_retries})..."
-                logger.info(status_msg)
-                # with self.console.status(status_msg, spinner=config.SPINNER):
-                gemini_result = self._format_text(transcript_text)
-
-                if not gemini_result.ok:
-                    logger.error(
-                        f"Gemini call failed (Attempt {attempt + 1}). Error: {gemini_result.error_message}"
-                    )
-                    if "quota" in str(gemini_result.error_message).lower():
-                        self.console.print(
-                            "[bold red]Gemini quota error. Aborting.[/bold red]"
-                        )
-                        return None
-                    if attempt < max_retries - 1:
-                        time.sleep(2)
-                        continue
-                    else:
-                        self.console.print(
-                            "[bold red]Gemini call failed after multiple retries. Aborting.[/bold red]"
-                        )
-                        return None
-
-                # Gemini call was successful, now check word loss
-                current_formatted_text = gemini_result.output
-                current_formatted_text = re.sub(
-                    r"\n+", "\n", current_formatted_text
-                ).strip()
-
-                formatted_word_count = self._count_words(current_formatted_text)
-
-                word_loss_percentage = 0
-                if original_word_count > 0:
-                    word_loss_percentage = (
-                        (original_word_count - formatted_word_count)
-                        / original_word_count
-                    ) * 100
-
-                logger.debug(
-                    f"Attempt {attempt + 1}: Formatted words: {formatted_word_count}, Word loss: {word_loss_percentage:.2f}%"
-                )
-
-                if word_loss_percentage <= word_loss_threshold:
-                    logger.info(
-                        f"Word loss ({word_loss_percentage:.2f}%) is within tolerance. Success."
-                    )
-                    formatted_text = current_formatted_text
-                    break  # Success
-                else:
-                    logger.warning(
-                        f"Word loss ({word_loss_percentage:.2f}%) exceeds threshold of {word_loss_threshold}%. Retrying..."
-                    )
-                    if attempt < max_retries - 1:
-                        time.sleep(2)
-                    else:
-                        logger.error("Exceeded max retries due to high word loss.")
-                        self.console.print(
-                            "[bold red]Failed to format due to high word loss after multiple retries.[/bold red]"
-                        )
-                        return None
-
-            if formatted_text is None:
-                logger.error("Formatting failed after all retries. No result to save.")
+            raw_text = input_file_path.read_text(encoding="utf-8")
+            
+            # Normalize the text to remove weird mid-sentence breaks
+            clean_text = self._clean_text(raw_text)
+            sentences = self._split_into_sentences(clean_text)
+            
+            if not sentences:
+                logger.warning(f"No sentences found in {input_file_path.name}")
                 return None
 
-            output_file_path = job_directory / config.FORMATED_TRANSCRIPT_NAME
-            output_file_path.write_text(formatted_text, encoding="utf-8")
+            paragraphs: List[str] = []
+            current_idx = 0
+            total = len(sentences)
+            
+            # Removed nested rich.console.status to prevent flickering
+            while current_idx < total:
+                logger.info(f"Processing: {current_idx}/{total} sentences for paragraphing.")
+                
+                chunk = sentences[current_idx : current_idx + self.sentence_chunk_size]
+                context = paragraphs[-self.context_paragraph_count:]
+                
+                prompt = self._build_ollama_prompt(context, chunk)
+                
+                try:
+                    response = self.ollama_client.submit_prompt(prompt)
+                    break_offset = self._parse_ollama_response(response, len(chunk))
+                    
+                    # Logic Guard: Avoid tiny 1-2 sentence paragraphs unless necessary
+                    if break_offset is not None and break_offset < 3 and (current_idx + break_offset < total):
+                        # If it's a very small break, just take the whole chunk to maintain flow
+                        move_by = len(chunk)
+                    elif break_offset and break_offset > 0:
+                        move_by = break_offset
+                    else:
+                        move_by = len(chunk)
+                    
+                    # Join and save paragraph
+                    new_para = " ".join(sentences[current_idx : current_idx + move_by])
+                    paragraphs.append(new_para.strip())
+                    
+                    current_idx += move_by
+                    
+                except Exception as e:
+                    logger.error(f"Error at sentence {current_idx}: {e}")
+                    # Fallback: dump the rest and exit
+                    paragraphs.append(" ".join(sentences[current_idx:]).strip())
+                    break
 
-            logger.info(
-                f"Formatted transcription saved to {output_file_path}. Returning path."
-            )
-            return output_file_path
+            # Save with double spacing
+            formatted_text = "\n\n".join(paragraphs)
+            output_path = job_directory / "formatted_transcript.txt"
+            output_path.write_text(formatted_text, encoding="utf-8")
+            
+            logger.info(f"Done! Saved to: {output_path.name}")
+            return output_path
 
         except Exception as e:
-            logger.critical(
-                f"An unexpected error occurred during formatting for {input_file_path}: {e}",
-                exc_info=True,
-            )
-            self.console.print(
-                f"  [bold red]An unexpected error occurred during formatting: {e}[/bold red]"
-            )
+            logger.exception("Formatter failed")
             raise
 
-    def _build_big_paragraph(self, text: str) -> str:
-        """Removes all the extra spaces and new lines etc."""
-        logger.debug(f"Building big paragraph from text (length: {len(text)}).")
-        paragraph = " ".join(text.split())
-        logger.debug(f"Big paragraph built (length: {len(paragraph)}).")
-        return paragraph
+    def _split_into_sentences(self, text: str) -> List[str]:
+        # Split on . ! or ? followed by a space
+        return [s.strip() for s in re.split(r'(?<=[.?!])\s+', text) if s.strip()]
 
-    def _format_text(self, text: str):
-        """
-        Submits the text to Gemini for formatting and returns the result dataclass.
-        """
-        logger.debug(f"Calling Gemini for formatting text (length: {len(text)}).")
-        prompt_path = Path(__file__).parent / "prompts/formatter/format-paragraph.txt"
-        logger.debug(f"Loading prompt from: {prompt_path}")
-        try:
-            prompt_template = prompt_path.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            logger.critical(f"Prompt file not found at {prompt_path}.", exc_info=True)
-            raise  # Propagate this critical error
+    def _build_ollama_prompt(self, context_paras: List[str], chunk: List[str]) -> str:
+        prompt = [
+            "### INSTRUCTION",
+            "You are an editor. Identify the best index to start a NEW paragraph based on topic shifts.",
+            "Avoid creating very short paragraphs (less than 3 sentences) unless the topic completely changes.",
+            ""
+        ]
+        
+        if context_paras:
+            prompt.append("### PREVIOUS CONTEXT")
+            prompt.append(context_paras[-1])
+            prompt.append("---")
+            
+        prompt.append("### SENTENCES")
+        for i, s in enumerate(chunk):
+            prompt.append(f"{i}: {s}")
+            
+        prompt.append("\n### RESPONSE")
+        prompt.append(f"Respond ONLY with the index number (0-{len(chunk)-1}).")
+        prompt.append(f"If no break is needed, respond with {len(chunk)}.")
+        
+        return "\n".join(prompt)
 
-        clean_text = self._build_big_paragraph(text)
-        prompt = prompt_template.format(SERMON_TEXT=clean_text)
-        logger.debug(f"Prompt prepared (length: {len(prompt)}). Submitting to Gemini.")
-
-        return self.gemini_client.submit_prompt(prompt)
-
-    def _count_words(self, text: Optional[str]) -> int:
-        """Counts the number of words in a given string."""
-        if not text:
-            logger.debug("Counting words in empty or None text. Result: 0")
-            return 0
-        count = len(text.split())
-        logger.debug(f"Counted {count} words in text (length: {len(text)}).")
-        return count
+    def _parse_ollama_response(self, response: str, max_val: int) -> Optional[int]:
+        # Extract the first number found in the response
+        match = re.search(r'\b\d+\b', response.strip())
+        if match:
+            val = int(match.group(0))
+            return min(max(0, val), max_val)
+        return None

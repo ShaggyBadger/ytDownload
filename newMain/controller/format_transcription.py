@@ -80,7 +80,6 @@ class FormatTranscriptionController:
                 logger.info("Exiting Format Transcription Menu. User selected 'Back'.")
                 break
 
-            self.console.input("Press Enter to continue...")
         logger.info("Exited Format Transcription Menu.")
 
     def format_selected_transcription(self):

@@ -97,6 +97,7 @@ CLARITY AND FLOW IMPROVEMENT RULES (AUTHORIZED AND EXPECTED)
 You are expected to improve:
 
 • grammar
+• spelling
 • punctuation
 • sentence structure
 • clarity
