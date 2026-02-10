@@ -139,7 +139,7 @@ _spinner_styles = [
     "weather"
 ]
 _josh_favorite_spinners = [
-    "asthetic",
+    "aesthetic",
     "toggle7",
     "toggle10",
     "dots10",
@@ -148,7 +148,7 @@ _josh_favorite_spinners = [
     "pong",
     "bouncingBall",
 ]
-SPINNER = "point"
+SPINNER = "aesthetic"
 logger.debug("Default SPINNER set to '%s'", SPINNER)
 
 

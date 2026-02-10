@@ -413,6 +413,14 @@ class MetadataExtractor:
                                             self.console.print(
                                                 "[bold red]Gemini API quota exceeded. Stopping all metadata processing.[/bold red]"
                                             )
+                                            logger.debug(
+                                                f"Raw Gemini error output: {gemini_result.output}"
+                                            )
+                                            self.console.print(
+                                                f"[red]  Gemini call for '{category}' failed. See logs for raw output and details.[/red]"
+                                            )
+                                            print(gemini_result.output)
+                                            logging.shutdown()  # This flushes and closes all handlers
                                             return False  # Signal to stop everything
 
                                         logger.error(
@@ -420,6 +428,13 @@ class MetadataExtractor:
                                         )
                                         # If a non-quota LLM error occurs, we break to avoid further issues for this job
                                         # This means `all_categories_filled` will remain False
+                                        logger.debug(
+                                            f"Raw Gemini error output: {gemini_result.output}"
+                                        )
+                                        self.console.print(
+                                            f"[red]  Gemini call for '{category}' failed. See logs for raw output and details.[/red]"
+                                        )
+                                        logging.shutdown()  # This flushes and closes all handlers
                                         break
                                 except Exception:
                                     # Catch any unexpected errors during the generation process for a category
@@ -430,6 +445,10 @@ class MetadataExtractor:
                                     self.console.print(
                                         f"[red]  Error generating {category}. Check logs.[/red]"
                                     )
+                                    logger.debug(
+                                        f"Raw Gemini error output: {gemini_result.output}"
+                                    )
+                                    logging.shutdown()  # This flushes and closes all handlers
                                     # Mark the category with an error placeholder and save, so it's not re-attempted immediately
                                     metadata[category] = (
                                         f"[ERROR] - See logs"  # Mark as error
