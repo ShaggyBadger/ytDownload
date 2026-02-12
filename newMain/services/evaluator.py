@@ -107,7 +107,8 @@ class Evaluator:
 
     def __init__(self):
         self.logger = logging.getLogger(__name__)
-        self.ollama_client = OllamaClient(temperature=0.2)
+        self.ollama_client = OllamaClient(model="llama3.2:3b", temperature=0.2)
+        self.ollama_client_big = OllamaClient(model="qwen3:14b", temperature=0.2)
         self.rating_threshold = 8
 
     def run_evaluation(self, job_dir: Path):
@@ -303,7 +304,7 @@ class Evaluator:
 
         try:
             self.logger.debug("Submitting re-edit prompt to LLM...")
-            new_edited_text = self.ollama_client.submit_prompt(final_prompt)
+            new_edited_text = self.ollama_client_big.submit_prompt(final_prompt)
             self.logger.debug("LLM edit complete.")
             paragraph["edited"] = new_edited_text
             paragraph["evaluation_status"] = "regenerated"
@@ -717,8 +718,3 @@ class UserInteractiveEvaluator:
                 json.dump(data, f, indent=4)
         except IOError as e:
             self.logger.error(f"Error writing to {file_path}: {e}", exc_info=True)
-
-
-if __name__ == "__main__":
-    evaluator = RegeneratedEvaluation()
-    evaluator.run()
