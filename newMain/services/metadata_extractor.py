@@ -6,9 +6,11 @@ from typing import Dict, Any  # For type hinting, especially for dictionary stru
 from joshlib.gemini import (
     GeminiClient,
 )  # Custom client for interacting with the Gemini LLM
-from rich.console import (
-    Console,
-)  # For rich text output in the console, providing better user experience
+from joshlib.ollama import (
+    OllamaClient,
+)  # Custom client for interacting with the Ollama LLM
+
+from rich.console import Console
 
 from config import config  # Application configuration settings
 from database.models import (
@@ -37,6 +39,12 @@ class MetadataExtractor:
         # Define the directory where LLM prompts for metadata generation are stored
         self.prompts_dir = Path(__file__).parent / "prompts" / "metadata"
         self.llm_client = GeminiClient()  # Instantiate the Gemini LLM client
+
+        # instantiate the Ollama client with small model and higher context to
+        # process long sermons
+        self.ollama_client = OllamaClient(
+            model="llama3.2:3b", temperature=0.2, num_ctx=32768
+        )
         logger.debug(
             f"MetadataExtractor initialized for Job ID: {self.job_id}. Prompts from: {self.prompts_dir}"
         )
@@ -245,9 +253,29 @@ class MetadataExtractor:
         """
         logger.debug(f"Generating 'thesis' for Job ID: {self.job_id} using LLM.")
         prompt_path = self.prompts_dir / "generate-thesis.txt"
+        decicion_prompt_path = self.prompts_dir / "thesis-decision.txt"
+
         prompt_template = prompt_path.read_text(encoding="utf-8")
+        decision_template = decicion_prompt_path.read_text(encoding="utf-8")
+
         prompt = prompt_template.format(SERMON_TEXT=transcript_text)
-        return self.llm_client.submit_prompt(prompt)
+
+        r1 = self.ollama_client.submit_prompt(prompt)
+        logger.debug("First thesis generation complete...")
+        r2 = self.ollama_client.submit_prompt(prompt)
+        logger.debug("Second thesis generation complete...")
+        r3 = self.ollama_client.submit_prompt(prompt)
+        logger.debug("Third thesis generation complete...")
+
+        decision_prompt = decision_template.format(
+            t1=r1, t2=r2, t3=r3, SERMON_TEXT=transcript_text
+        )
+
+        logger.debug("Submitting thesis decision prompt to LLM...")
+        thesis = self.ollama_client.submit_prompt(decision_prompt)
+        logger.debug(f"Thesis decision generation complete: {thesis}")
+
+        return thesis
 
     def _generate_summary(self, transcript_text: str, current_metadata: dict) -> str:
         """

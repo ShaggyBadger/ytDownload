@@ -1,0 +1,15 @@
+You will be proided 3 thesis statements that capture the core thesis of a sermon. Your task is to determine which of the three thesis statements best captures the core thesis of the sermon. Return only the single sentence final improved thesis statement. Do not include any explanation or the prior steps.
+
+thesis 1:
+{t1}
+
+thesis 2:
+{t2}
+
+thesis 3:
+{t3}
+
+Sermon:
+{SERMON_TEXT}
+
+select the best thesis statement that captures the core thesis of the sermon and return only a single sentence thesis statement without any explanation or the prior steps.

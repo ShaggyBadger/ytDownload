@@ -112,14 +112,17 @@ class IngestLink:
         logger.info(f"Fetching metadata with yt-dlp for URL: '{url}'")
         # yt-dlp options to fetch info only, use browser cookies, and enable remote JS solver
         ydl_opts = {
-            "quiet": True,  # Suppress console output from yt-dlp
-            "no_warnings": True,  # Suppress warnings from yt-dlp
-            "skip_download": True,  # Ensure no download occurs
-            # "cookiesfrombrowser": ("firefox",),  # Use cookies from Firefox (can be changed to other browsers)
-            # "extractor_args": {"youtube": {"player_client": ["android"]}}, # Workaround for certain YouTube restrictions
-            # "remote_components": "ejs:github", # Enable external JavaScript solver for YouTube challenges
-            "extract_flat": False,  # Extract all info, not just top-level
+            "cookiesfrombrowser": ("firefox",),
+            "remote_components": ["ejs:github"],
+            "extractor_args": {
+                "youtube": {"player_client": ["web", "android", "web_safari"]}
+            },
+            "skip_download": True,
+            "extract_flat": False,
+            "quiet": True,
+            "no_warnings": True,
         }
+
         logger.debug(f"yt-dlp options for metadata extraction: {ydl_opts}")
 
         try:

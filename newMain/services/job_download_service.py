@@ -206,13 +206,17 @@ class Downloader:
                         "preferredquality": "192",
                     }
                 ],
-                "outtmpl": str(full_audio_path).replace(".mp3", ""),
+                "outtmpl": {"default": str(full_audio_path.with_suffix(".%(ext)s"))},
                 "keepvideo": False,
                 "progress_hooks": [progress_hook],
                 "postprocessor_hooks": [postprocessor_hook],
-                "extractor_args": {"youtube": {"player_client": ["android"]}},
-                # "cookiesfrombrowser": ("chrome",),  # Use cookies from Chrome to handle age restrictions
-                "remote_components": "ejs:github",  # Enable external JavaScript solver
+                "cookiesfrombrowser": ("firefox",),
+                "extractor_args": {
+                    "youtube": {"player_client": ["web", "android", "web_safari"]}
+                },
+                "remote_components": [
+                    "ejs:github"
+                ],  # Enable external JavaScript solver
             }
             logger.debug(f"yt-dlp options: {ydl_opts}")
 

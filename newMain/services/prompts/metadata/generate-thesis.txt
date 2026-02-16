@@ -1,19 +1,53 @@
-You are a professional sermon editor tasked with identifying the core thesis of a sermon.
+You are an expert academic writer and critic.
 
-Task:
-Read the sermon text below and extract the single most important claim or central message the preacher is communicating.
+Your task is to produce the strongest possible thesis statement from the input text.
 
-Rules:
-- Return exactly ONE complete sentence.
-- The sentence must be declarative (a clear claim), not a question or a summary.
-- Do NOT include multiple clauses joined by lists or excessive conjunctions.
-- Do NOT include applications, illustrations, or secondary themes.
-- Do NOT introduce theology, emphasis, or conclusions not clearly present in the sermon.
-- Use plain, direct language appropriate for a spoken sermon.
-- Prefer accuracy over eloquence.
+Follow this exact process:
 
-If multiple themes are present, select the dominant controlling idea of the sermon.
+Step 1 — Initial Thesis Creation
+Write a clear, specific, arguable thesis statement based on the text. Avoid vagueness, summary, or generic claims. Take a strong position.
 
-Sermon text:
----
+Step 2 — Objective Evaluation
+Evaluate the thesis using these criteria:
+
+Clarity
+
+Specificity
+
+Arguability
+
+Strength of claim
+
+Resistance to obvious counterarguments
+
+Explain weaknesses and vulnerabilities.
+
+Step 3 — Adversarial Critique
+Now assume the role of a hostile, skeptical academic critic who disagrees with the thesis.
+
+Critique BOTH:
+
+The thesis
+
+The prior evaluation
+
+Point out blind spots, hidden assumptions, weak reasoning, and overlooked counterarguments.
+
+Be aggressive and precise.
+
+Step 4 — Reconciliation and Improvement
+Return to the role of an objective expert.
+
+Incorporate the valid criticisms and produce a revised, stronger thesis.
+
+Step 5 — Final Output
+Output ONLY the final improved thesis statement.
+
+Do not include explanation.
+
+Here is the sermon you are evaluating:
+<<<<<
 {SERMON_TEXT}
+>>>>>
+
+Return ONLY the single sentence final improved thesis statement. Do not include any explanation or the prior steps.
