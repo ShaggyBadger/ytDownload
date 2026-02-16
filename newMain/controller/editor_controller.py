@@ -384,7 +384,7 @@ class EditorMenu:
                                 paragraphs_data = json.load(f)
 
                             for entry in paragraphs_data:
-                                if entry.get("edited") is None:
+                                if entry.get("edited") is None or entry.get("edited") == "[ERROR] - See logs for details.":
                                     needs_editing_processing = True
                                     logger.debug(
                                         f"Job {job_data.job_ulid} has unedited paragraphs."

@@ -241,7 +241,7 @@ class Editor:
             edited_this_run = 0
 
             for i, p_entry in enumerate(paragraphs_data):
-                if p_entry.get("edited") is None:
+                if p_entry.get("edited") is None or p_entry.get("edited") == "[ERROR] - See logs for details.":
                     status_message = f"Processing paragraph {i+1}/{total_paragraphs} for Job ID {self.job_id}..."
                     logger.info(status_message)
                     with self.console.status(status_message, spinner=config.SPINNER):
