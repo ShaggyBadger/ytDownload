@@ -1763,8 +1763,7 @@ Return plain text only.
 """
 
 
-
-print(f'og length: {len(sample_raw_transcription.split())}')
+print(f"og length: {len(sample_raw_transcription.split())}")
 clean_text = " ".join(sample_raw_transcription.split())
 
 
@@ -1793,7 +1792,12 @@ Here is the sermon text that you will need to re-write according to the rules:
 {SERMON_TEXT}
 """
 fp = formatting_prompt.format(SERMON_TEXT=sample_raw_transcription)
-result = client.submit_prompt(fp)
-print(f'og length: {len(result.split())}')
+ollama_response = client.submit_prompt(fp)
 
-print(result)
+if ollama_response.ok:
+    result_text = ollama_response.output
+    print(f"og length: {len(result_text.split())}")
+    print(result_text)
+else:
+    print(f"Ollama call failed: {ollama_response.error_message}")
+    print(f"Full response: {ollama_response}")

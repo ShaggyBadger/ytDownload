@@ -197,9 +197,21 @@ class Evaluator:
 
         # --- Submit to Ollama and process response ---
         try:
-            response_text = self.ollama_client.submit_prompt(evaluation_prompt)
-            paragraph["full_evaluation_output"] = response_text
-            evaluation_data = self._parse_evaluation_response(response_text)
+            response = self.ollama_client.submit_prompt(evaluation_prompt)
+            if response.ok:
+                response_text = response.output
+                paragraph["full_evaluation_output"] = response_text
+                evaluation_data = self._parse_evaluation_response(response_text)
+            else:
+                error_message = response.error_message or "Unknown Ollama error"
+                self.logger.error(
+                    f"Ollama evaluation failed for paragraph {index}: {error_message}"
+                )
+                response_text = f"[Ollama Error]: {error_message}"
+                paragraph["full_evaluation_output"] = response_text
+                evaluation_data = (
+                    None  # Ensure evaluation_data is None if Ollama call failed
+                )
 
             if evaluation_data:
                 self._update_paragraph_status(paragraph, evaluation_data)
@@ -208,7 +220,7 @@ class Evaluator:
                     f"Could not parse evaluation response for paragraph {index}. Status set to 'failed'."
                 )
                 paragraph["evaluation_status"] = "failed"
-                paragraph["critique"] = "Failed to parse model output."
+                paragraph["critique"] = "Failed to parse model output or Ollama error."
                 paragraph["rating"] = None
 
         except Exception as e:
@@ -304,22 +316,33 @@ class Evaluator:
 
         try:
             self.logger.debug("Submitting re-edit prompt to LLM...")
-            new_edited_text = self.ollama_client_big.submit_prompt(final_prompt)
-            self.logger.debug("LLM edit complete.")
-            paragraph["edited"] = new_edited_text
-            paragraph["evaluation_status"] = "regenerated"
-            # Also store the prompt that led to this regeneration
-            paragraph["regeneration_prompt"] = final_prompt
+            response = self.ollama_client_big.submit_prompt(final_prompt)
+            if response.ok:
+                new_edited_text = response.output
+                self.logger.debug("LLM edit complete.")
+                paragraph["edited"] = new_edited_text
+                paragraph["evaluation_status"] = "regenerated"
+                # Also store the prompt that led to this regeneration
+                paragraph["regeneration_prompt"] = final_prompt
 
-            # update the status for this paragraph
-            paragraph["evaluation_status"] = "regenerated"
-            self.logger.info(f"Paragraph {index} successfully regenerated.")
+                # update the status for this paragraph
+                paragraph["evaluation_status"] = "regenerated"
+                self.logger.info(f"Paragraph {index} successfully regenerated.")
+            else:
+                error_message = response.error_message or "Unknown Ollama error"
+                self.logger.error(
+                    f"Ollama regeneration failed for paragraph {index}: {error_message}"
+                )
+                paragraph[
+                    "critique"
+                ] += f"\n[REGENERATION FAILED: Ollama client error: {error_message}]"
+                return
         except Exception as e:
             self.logger.error(
                 f"Ollama processing failed during regeneration for paragraph {index}: {e}",
                 exc_info=True,
             )
-            paragraph["critique"] += "\n[REGENERATION FAILED: Ollama client error.]"
+            paragraph["critique"] += f"\n[REGENERATION FAILED: Exception: {e}]"
             return
 
     def _get_prompt_name(self, index: int, total: int) -> str:
@@ -611,22 +634,31 @@ class UserInteractiveEvaluator:
             "[bold blue]Running LLM evaluation...[/bold blue]", spinner=config.SPINNER
         ):
             try:
-                llm_full_output = self.evaluator_service.ollama_client.submit_prompt(
+                response = self.evaluator_service.ollama_client.submit_prompt(
                     evaluation_prompt
                 )
-                evaluation_data = self.evaluator_service._parse_evaluation_response(
-                    llm_full_output
-                )
+                if response.ok:
+                    llm_full_output = response.output
+                    evaluation_data = self.evaluator_service._parse_evaluation_response(
+                        llm_full_output
+                    )
 
-                if evaluation_data:
-                    new_rating = evaluation_data.get("rating", "N/A")
-                    new_critique = evaluation_data.get(
-                        "critique", "[LLM did not provide a critique.]"
-                    )
+                    if evaluation_data:
+                        new_rating = evaluation_data.get("rating", "N/A")
+                        new_critique = evaluation_data.get(
+                            "critique", "[LLM did not provide a critique.]"
+                        )
+                    else:
+                        self.logger.warning(
+                            f"Could not parse LLM evaluation response for paragraph {index}."
+                        )
                 else:
-                    self.logger.warning(
-                        f"Could not parse LLM evaluation response for paragraph {index}."
+                    error_message = response.error_message or "Unknown Ollama error"
+                    self.logger.error(
+                        f"Ollama interactive evaluation failed for paragraph {index}: {error_message}"
                     )
+                    llm_full_output = f"[Ollama Error]: {error_message}"
+                    new_critique = f"[ERROR during LLM evaluation: {error_message}]"
 
             except Exception as e:
                 self.logger.error(

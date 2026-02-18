@@ -69,8 +69,23 @@ class Formatter:  # Renamed from OllamaFormatter
                 prompt = self._build_ollama_prompt(context, chunk)
 
                 try:
-                    response = self.ollama_client.submit_prompt(prompt)
-                    break_offset = self._parse_ollama_response(response, len(chunk))
+                    ollama_response = self.ollama_client.submit_prompt(prompt)
+                    if ollama_response.ok:
+                        response_text = ollama_response.output
+                        break_offset = self._parse_ollama_response(
+                            response_text, len(chunk)
+                        )
+                    else:
+                        error_message = (
+                            ollama_response.error_message
+                            or "Unknown Ollama error during formatting."
+                        )
+                        logger.error(
+                            f"Ollama formatting failed at sentence {current_idx}: {error_message}"
+                        )
+                        # Fallback: dump the rest and exit
+                        paragraphs.append(" ".join(sentences[current_idx:]).strip())
+                        break
 
                     # Logic Guard: Avoid tiny 1-2 sentence paragraphs unless necessary
                     if (

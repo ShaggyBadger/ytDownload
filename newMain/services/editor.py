@@ -241,22 +241,38 @@ class Editor:
             edited_this_run = 0
 
             for i, p_entry in enumerate(paragraphs_data):
-                if p_entry.get("edited") is None or p_entry.get("edited") == "[ERROR] - See logs for details.":
+                if (
+                    p_entry.get("edited") is None
+                    or p_entry.get("edited") == "[ERROR] - See logs for details."
+                ):
                     status_message = f"Processing paragraph {i+1}/{total_paragraphs} for Job ID {self.job_id}..."
                     logger.info(status_message)
                     with self.console.status(status_message, spinner=config.SPINNER):
                         try:
-                            ollama_response = self.ollama_client.submit_prompt(
+                            ollama_result = self.ollama_client.submit_prompt(
                                 p_entry["prompt"]
                             )
-                            logger.debug(
-                                f"Ollama response for paragraph {i+1}: '{ollama_response[:100]}...'"
-                            )
-                            p_entry["edited"] = ollama_response
-                            edited_this_run += 1
-                            self._save_paragraphs_to_file(
-                                paragraphs_data, paragraph_file_path
-                            )  # Save after each successful edit
+                            if ollama_result.ok:
+                                p_entry["edited"] = ollama_result.output
+                                logger.debug(
+                                    f"Ollama response for paragraph {i+1}: '{ollama_result.output[:100]}...'"
+                                )
+                                edited_this_run += 1
+                                self._save_paragraphs_to_file(
+                                    paragraphs_data, paragraph_file_path
+                                )  # Save after each successful edit
+                            else:
+                                error_message = (
+                                    ollama_result.error_message
+                                    or "Unknown Ollama error during editing."
+                                )
+                                logger.error(
+                                    f"Ollama editing failed for paragraph {i+1} for Job ID {self.job_id}: {error_message}"
+                                )
+                                p_entry["edited"] = f"[ERROR] - {error_message}"
+                                self._save_paragraphs_to_file(
+                                    paragraphs_data, paragraph_file_path
+                                )  # Save error state
                         except Exception as e:
                             logger.error(
                                 f"Error processing paragraph {i+1} for Job ID {self.job_id} with Ollama.",

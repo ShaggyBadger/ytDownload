@@ -260,11 +260,27 @@ class MetadataExtractor:
 
         prompt = prompt_template.format(SERMON_TEXT=transcript_text)
 
-        r1 = self.ollama_client.submit_prompt(prompt)
+        r1_response = self.ollama_client.submit_prompt(prompt)
+        if not r1_response.ok:
+            logger.error(f"First thesis generation failed: {r1_response.error_message}")
+            return f"[ERROR: {r1_response.error_message}]"
+        r1 = r1_response.output
         logger.debug("First thesis generation complete...")
-        r2 = self.ollama_client.submit_prompt(prompt)
+
+        r2_response = self.ollama_client.submit_prompt(prompt)
+        if not r2_response.ok:
+            logger.error(
+                f"Second thesis generation failed: {r2_response.error_message}"
+            )
+            return f"[ERROR: {r2_response.error_message}]"
+        r2 = r2_response.output
         logger.debug("Second thesis generation complete...")
-        r3 = self.ollama_client.submit_prompt(prompt)
+
+        r3_response = self.ollama_client.submit_prompt(prompt)
+        if not r3_response.ok:
+            logger.error(f"Third thesis generation failed: {r3_response.error_message}")
+            return f"[ERROR: {r3_response.error_message}]"
+        r3 = r3_response.output
         logger.debug("Third thesis generation complete...")
 
         decision_prompt = decision_template.format(
@@ -272,7 +288,13 @@ class MetadataExtractor:
         )
 
         logger.debug("Submitting thesis decision prompt to LLM...")
-        thesis = self.ollama_client.submit_prompt(decision_prompt)
+        thesis_response = self.ollama_client.submit_prompt(decision_prompt)
+        if not thesis_response.ok:
+            logger.error(
+                f"Final thesis decision generation failed: {thesis_response.error_message}"
+            )
+            return f"[ERROR: {thesis_response.error_message}]"
+        thesis = thesis_response.output
         logger.debug(f"Thesis decision generation complete: {thesis}")
 
         return thesis
@@ -286,7 +308,7 @@ class MetadataExtractor:
         prompt_path = self.prompts_dir / "generate-summary.txt"
         prompt_template = prompt_path.read_text(encoding="utf-8")
         prompt = prompt_template.format(SERMON_TEXT=transcript_text)
-        return self.llm_client.submit_prompt(prompt)
+        return self.ollama_client.submit_prompt(prompt)
 
     def _generate_outline(self, transcript_text: str, current_metadata: dict) -> str:
         """
@@ -297,7 +319,7 @@ class MetadataExtractor:
         prompt_path = self.prompts_dir / "generate-outline.txt"
         prompt_template = prompt_path.read_text(encoding="utf-8")
         prompt = prompt_template.format(SERMON_TEXT=transcript_text)
-        return self.llm_client.submit_prompt(prompt)
+        return self.ollama_client.submit_prompt(prompt)
 
     def _generate_tone(self, transcript_text: str, current_metadata: dict) -> str:
         """
@@ -308,7 +330,7 @@ class MetadataExtractor:
         prompt_path = self.prompts_dir / "generate-tone.txt"
         prompt_template = prompt_path.read_text(encoding="utf-8")
         prompt = prompt_template.format(SERMON_TEXT=transcript_text)
-        return self.llm_client.submit_prompt(prompt)
+        return self.ollama_client.submit_prompt(prompt)
 
     def _generate_main_text(self, transcript_text: str, current_metadata: dict) -> str:
         """
@@ -319,7 +341,7 @@ class MetadataExtractor:
         prompt_path = self.prompts_dir / "generate-main-text.txt"
         prompt_template = prompt_path.read_text(encoding="utf-8")
         prompt = prompt_template.format(SERMON_TEXT=transcript_text)
-        return self.llm_client.submit_prompt(prompt)
+        return self.ollama_client.submit_prompt(prompt)
 
     # Main orchestration method
     def process_metadata(self) -> bool:
