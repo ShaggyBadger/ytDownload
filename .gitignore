@@ -16,4 +16,4 @@ __pycache__/
 alembic/
 *.mp3
 newMain/jobs/
-test.py
+newMain/test.py

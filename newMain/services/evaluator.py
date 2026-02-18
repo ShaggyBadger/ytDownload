@@ -108,7 +108,7 @@ class Evaluator:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.ollama_client = OllamaClient(model="llama3.2:3b", temperature=0.2)
-        self.ollama_client_big = OllamaClient(model="qwen3:14b", temperature=0.2)
+        self.ollama_client_big = OllamaClient(model="mistral-nemo:latest", temperature=0.2)
         self.rating_threshold = 8
 
     def run_evaluation(self, job_dir: Path):
