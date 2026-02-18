@@ -134,7 +134,7 @@ class Evaluator:
         indices_to_evaluate = [
             i
             for i, p in enumerate(paragraphs)
-            if p.get("evaluation_status") != "passed"
+            if p.get("evaluation_status") not in ["passed", "regenerated"]
         ]
 
         if not indices_to_evaluate:
