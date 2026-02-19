@@ -2,6 +2,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
+from joshlib.ollama import OllamaClient
 
 from rich.console import Console
 
@@ -19,6 +20,7 @@ class ChapterBuilder:
         """Initializes the ChapterBuilder for a specific job."""
         self.job_id = job_id
         self.console = Console()
+        self.ollama_client = OllamaClient(model="llama3.2:3b", temperature=0.1)
         logger.debug(f"ChapterBuilder initialized for Job ID: {self.job_id}")
 
     def build_chapter_document(self):
@@ -195,3 +197,6 @@ class ChapterBuilder:
                 self.console.print(
                     f"[yellow]Job {job.job_ulid}: 'build_chapter' stage not found in database.[/red]"
                 )
+
+    def evaluate_chapter(self):
+        pass

@@ -438,12 +438,15 @@ class UserInteractiveEvaluator:
         self.logger = logging.getLogger(__name__)
         self.console = console
         self.evaluator_service = Evaluator()  # Instantiate the Evaluator service
+        self.auto_pass_enabled = False  # Flag to enable/disable auto-passing
+        self.user_review_threshold = 7  # Default threshold for auto-passing
 
     def evaluate_single_job(self):
         """
         Guides the user to select a single job and evaluates its eligible paragraphs
         interactively.
         """
+        self._ask_auto_pass_preference()
         eligible_jobs = self._get_eligible_jobs_for_user_evaluation()
         if not eligible_jobs:
             self.console.print(
@@ -480,6 +483,7 @@ class UserInteractiveEvaluator:
         Evaluates all eligible jobs interactively, processing paragraphs that are
         marked as 'regenerated' and awaiting user review.
         """
+        self._ask_auto_pass_preference()
         eligible_jobs = self._get_eligible_jobs_for_user_evaluation()
         if not eligible_jobs:
             self.console.print(
@@ -561,10 +565,34 @@ class UserInteractiveEvaluator:
         )
         self.logger.info(f"Interactive evaluation complete for job: {job_dir.name}.")
 
+    def _ask_auto_pass_preference(self):
+        """
+        Asks the user if they want to enable auto-passing of paragraphs
+        with a rating >= self.user_review_threshold.
+        """
+        response = Prompt.ask(
+            f"Automatically pass paragraphs with LLM rating >= {self.user_review_threshold}? ([bold green]y[/bold green]/[bold red]n[/bold red])",
+            choices=["y", "n"],
+            default="y",
+        ).lower()
+        self.auto_pass_enabled = response == "y"
+        if self.auto_pass_enabled:
+            self.console.print(
+                f"[green]Auto-passing enabled for ratings >= {self.user_review_threshold}.[/green]"
+            )
+            self.logger.info(
+                f"Auto-passing enabled for ratings >= {self.user_review_threshold}."
+            )
+        else:
+            self.console.print("[yellow]Auto-passing disabled. All paragraphs require manual review.[/yellow]")
+            self.logger.info("Auto-passing disabled. All paragraphs require manual review.")
+
+
     def _get_eligible_jobs_for_user_evaluation(self) -> list[Path]:
         """
         Fetches job directories that contain paragraphs with an 'evaluation_status' of 'regenerated'.
         """
+
         self.logger.debug("Gathering eligible job directories for user evaluation.")
         main_dir = config.PROJECT_ROOT / "jobs"
         all_job_dirs = [p for p in main_dir.iterdir() if p.is_dir()]
@@ -605,7 +633,7 @@ class UserInteractiveEvaluator:
         )
         current_rating = paragraph_data.get("rating", "N/A")
 
-        self.console.print(f"\n[bold magenta]Paragraph {index + 1}[/bold magenta]")
+        self.console.print(f"\n[bold magenta]Job: {job_dir.name} - Paragraph: {index + 1}[/bold magenta]")
         self.console.print(
             Panel(
                 f"[bold yellow]Original:[/bold yellow]\n{original}\n\n"
@@ -683,20 +711,31 @@ class UserInteractiveEvaluator:
         paragraph_data["full_evaluation_output"] = llm_full_output
 
         # 4. Prompt for user decision in a loop
-        while True:
-            user_decision = self._get_user_evaluation()
-            if user_decision == "v":
-                self.console.print(
-                    Panel(
-                        llm_full_output,
-                        title="[bold blue]Full LLM Response[/bold blue]",
-                        border_style="blue",
+        if (
+            self.auto_pass_enabled
+            and new_rating is not None
+            and isinstance(new_rating, int)
+            and new_rating >= self.user_review_threshold
+        ):
+            self.console.print(
+                f"[bold green]LLM rated paragraph {new_rating}/10, which is >= {self.user_review_threshold}. Automatically marking as 'passed'.[/bold green]"
+            )
+            return "y"  # Simulate user accepting the paragraph
+        else:
+            while True:
+                user_decision = self._get_user_evaluation()
+                if user_decision == "v":
+                    self.console.print(
+                        Panel(
+                            llm_full_output,
+                            title="[bold blue]Full LLM Response[/bold blue]",
+                            border_style="blue",
+                        )
                     )
-                )
-                self.console.input("Press Enter to continue...")
-                # The loop continues, re-offering the accept/reject menu
-            else:
-                return user_decision  # Return y, n, or s
+                    self.console.input("Press Enter to continue...")
+                    # The loop continues, re-offering the accept/reject menu
+                else:
+                    return user_decision  # Return y, n, or s
 
     def _get_user_evaluation(self) -> str:
         """

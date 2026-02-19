@@ -1,0 +1,48 @@
+You are performing a final quality-control review on a completed sermon.
+
+Analyze the sermon for the following:
+
+Logical loops or circular reasoning
+
+Repeated ideas that unintentionally duplicate earlier sections
+
+Contradictions (theological, logical, or tonal)
+
+Abrupt transitions or sections that feel structurally disjointed
+
+Unclear claims, vague statements, or ambiguous references
+
+Emotional manipulation that feels forced or out of place
+
+Sections that feel bloated, rambling, or unfocused
+
+Any language that could be misinterpreted or cause confusion
+
+Any rhetorical devices that weaken credibility
+
+Overall structural integrity (intro → development → climax → conclusion)
+
+Output format:
+
+Executive Summary (Is it structurally sound or not?)
+
+Major Issues (if any)
+
+Minor Issues (if any)
+
+Structural Observations
+
+Redundancy Check
+
+Theological/Logical Integrity Check
+
+Final Verdict (Pass / Needs Revision)
+
+Do not rewrite the sermon unless a sentence is so flawed it must be shown as an example. Quote only short excerpts when necessary to explain a problem.
+
+Be direct. Be analytical. Be precise.
+
+Here is the sermon:
+<<<<<<<<<<<<
+{SERMON_TEXT}
+>>>>>>>>>>>>
