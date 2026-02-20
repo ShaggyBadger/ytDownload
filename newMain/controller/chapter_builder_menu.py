@@ -15,7 +15,17 @@ logger = logging.getLogger(__name__)
 
 
 class ChapterBuilderMenu:
+    """
+    Manages the user interface and orchestration for building chapter documents.
+    This menu allows users to build chapters for single jobs, all eligible jobs,
+    or overwrite existing chapter documents. It interacts with the `ChapterBuilder`
+    service to perform the actual document creation.
+    """
     def __init__(self):
+        """
+        Initializes the ChapterBuilderMenu with console instance and menu options.
+        Each option maps a display string to a corresponding handler method.
+        """
         self.console = Console()
         self.options = {
             "1": {
@@ -36,15 +46,23 @@ class ChapterBuilderMenu:
 
     def _get_eligible_jobs_for_chapter_build(self):
         """
-        Queries the database for jobs that have successfully completed the 'edit_local_llm' stage,
-        and where the final document does not exist on disk.
-        Returns a list of dictionaries, each containing relevant job information.
+        Queries the database for jobs that meet the criteria for chapter building.
+
+        Eligibility criteria:
+        - The 'edit_local_llm' stage must have completed successfully.
+        - The final chapter document file (`config.FINAL_DOCUMENT_NAME`) must NOT
+          exist on disk for the job's directory.
+
+        Returns:
+            list: A list of dictionaries, each containing relevant job information
+                  (id, job_ulid, title, job_directory, final_document_disk_path,
+                  build_chapter_stage_state) for eligible jobs.
         """
         logger.debug("Querying for eligible jobs for chapter building.")
         jobs_list = []
         try:
             with get_session() as session:
-                # Subquery to find jobs where edit_local_llm is successful
+                # Subquery to find job IDs where the 'edit_local_llm' stage is successful.
                 successful_edit_llm_jobs = (
                     session.query(JobStage.job_id)
                     .filter(
@@ -55,7 +73,8 @@ class ChapterBuilderMenu:
                 )
                 logger.debug("Subquery for successful 'edit_local_llm' jobs executed.")
 
-                # Query for jobs that are in the successful_edit_llm_jobs list
+                # Main query to fetch detailed information for jobs that were
+                # successful in 'edit_local_llm' and have a 'build_chapter' stage.
                 candidate_jobs_query = (
                     (
                         session.query(
@@ -72,30 +91,23 @@ class ChapterBuilderMenu:
                             JobStage.stage_name == "build_chapter",
                         )
                     )
-                    .distinct()
+                    .distinct() # Ensure unique job entries.
                     .all()
                 )
                 logger.debug(
                     f"Found {len(candidate_jobs_query)} candidate jobs from DB query."
                 )
 
+                # Filter candidates based on the 'build_chapter' stage state.
+                # A job is eligible if its 'build_chapter' stage is currently 'pending'.
                 for job_data in candidate_jobs_query:
-                    job_directory = Path(job_data.job_directory)
-                    final_document_path = job_directory / config.FINAL_DOCUMENT_NAME
-
-                    final_document_exists = final_document_path.exists()
-                    logger.debug(
-                        f"Job ULID {job_data.job_ulid}: Final document exists on disk: {final_document_exists}"
-                    )
-
-                    if not final_document_exists:
+                    if job_data.build_chapter_stage_state.value == StageState.pending.value:
                         jobs_list.append(
                             {
                                 "id": job_data.job_id,
                                 "job_ulid": job_data.job_ulid,
                                 "title": job_data.title,
                                 "job_directory": job_data.job_directory,
-                                "final_document_disk_path": str(final_document_path),
                                 "build_chapter_stage_state": job_data.build_chapter_stage_state.value,
                             }
                         )
@@ -111,7 +123,7 @@ class ChapterBuilderMenu:
     def _select_and_build_single_chapter(self):
         """
         Allows the user to select a single job eligible for chapter building
-        and triggers the chapter building process.
+        and triggers the chapter building process for that specific job.
         """
         logger.info("Initiating single chapter build selection process.")
         self.console.clear()
@@ -130,6 +142,7 @@ class ChapterBuilderMenu:
             self.console.input("Press Enter to continue...")
             return
 
+        # Display eligible jobs in a Rich table for user selection.
         table = Table(
             title="Available Sermons for Chapter Building",
             show_header=True,
@@ -140,10 +153,11 @@ class ChapterBuilderMenu:
         table.add_column("No.", style="cyan", width=5)
         table.add_column("Job ULID", style="green")
         table.add_column("Title", style="green")
-        table.add_column("Final Document Path", style="dim")
+        # Removed "Final Document Path" as eligibility is no longer based on file system existence.
+        # table.add_column("Final Document Path", style="dim")
         table.add_column("Build Chapter Status", style="yellow")
 
-        job_map = {}
+        job_map = {} # Map display numbers to job data for easy lookup.
         for i, job_data in enumerate(jobs_to_build):
             display_num = str(i + 1)
             job_map[display_num] = job_data
@@ -151,7 +165,7 @@ class ChapterBuilderMenu:
                 display_num,
                 job_data["job_ulid"],
                 job_data["title"],
-                job_data["final_document_disk_path"],
+                # Removed "final_document_disk_path" as eligibility is no longer based on file system existence.
                 job_data["build_chapter_stage_state"],
             )
 
@@ -181,6 +195,7 @@ class ChapterBuilderMenu:
                     f"User selected Job ULID: {selected_job_data['job_ulid']} (ID: {selected_job_data['id']}) for single chapter build."
                 )
                 try:
+                    # Instantiate ChapterBuilder service and build the document.
                     chapter_builder_service = ChapterBuilder(
                         job_id=selected_job_data["id"]
                     )
@@ -205,10 +220,12 @@ class ChapterBuilderMenu:
 
     def _build_all_chapters(self):
         """
-        Builds the final chapter document for all jobs eligible for chapter building.
+        Builds the final chapter document for all jobs that are eligible.
+        Each job's processing clears the console and displays a rule for better
+        visual separation and focus during bulk operations.
         """
         logger.info("Initiating bulk chapter build for all eligible jobs.")
-        self.console.clear()
+        self.console.clear() # Clear console before starting bulk processing overview.
         self.console.rule(
             "[bold blue]Building Chapters for All Eligible Jobs[/bold blue]"
         )
@@ -228,8 +245,12 @@ class ChapterBuilderMenu:
             f"Found {len(jobs_to_build)} eligible jobs for bulk chapter building."
         )
         for i, job_data in enumerate(jobs_to_build):
+            # Clear console for each job and display a rule for visual demarcation.
+            # This helps to focus the user's attention on the current job being processed.
+            self.console.clear()
+            self.console.rule(f"[bold blue]Processing Chapter ({i+1}/{len(jobs_to_build)})[/bold blue]")
             self.console.print(
-                f"[bold white]Processing Job ({i+1}/{len(jobs_to_build)}):[/bold white] {job_data['job_ulid']} - {job_data['title']}"
+                f"[bold white]Processing Job:[/bold white] {job_data['job_ulid']} - [dim]{job_data['title']}[/dim]"
             )
             logger.info(
                 f"Processing Job ({i+1}/{len(jobs_to_build)}): Job ULID: {job_data['job_ulid']} (ID: {job_data['id']})"
@@ -245,7 +266,7 @@ class ChapterBuilderMenu:
                     f"Error building chapter document for Job ULID: {job_data['job_ulid']}.",
                     exc_info=True,
                 )
-            self.console.print()
+            self.console.print() # Add an empty line for readability between job outputs.
 
         self.console.print("[green]Finished processing all eligible jobs.[/green]")
         logger.info("Finished bulk chapter building for all eligible jobs.")
@@ -253,7 +274,10 @@ class ChapterBuilderMenu:
 
     def _overwrite_chapter_document(self):
         """
-        Prompts for a ULID and overwrites an existing chapter document if the job is eligible.
+        Allows a user to specify a job ULID and forces an overwrite of its
+        chapter document, provided the job meets basic eligibility (metadata
+        and local LLM editing stages are successful). This is useful for
+        re-generating a chapter even if the final document already exists.
         """
         logger.info("Initiating overwrite chapter document process.")
         self.console.clear()
@@ -269,6 +293,7 @@ class ChapterBuilderMenu:
 
         try:
             with get_session() as session:
+                # Find the job by ULID.
                 job_info = session.query(JobInfo).filter_by(job_ulid=ulid_input).first()
 
                 if not job_info:
@@ -281,6 +306,7 @@ class ChapterBuilderMenu:
                     self.console.input("Press Enter to continue...")
                     return
 
+                # Check the status of prerequisite stages.
                 metadata_stage = (
                     session.query(JobStage)
                     .filter_by(job_id=job_info.id, stage_name="extract_metadata")
@@ -299,6 +325,7 @@ class ChapterBuilderMenu:
                     f"Job {ulid_input}: Edit LLM stage state: {edit_llm_stage.state if edit_llm_stage else 'N/A'}"
                 )
 
+                # Ensure prerequisite stages are successful before allowing overwrite.
                 if not metadata_stage or metadata_stage.state != StageState.success:
                     logger.warning(
                         f"Job {ulid_input}: Metadata extraction stage is not successful. Cannot overwrite."
@@ -323,6 +350,8 @@ class ChapterBuilderMenu:
                     f"[green]Job {ulid_input} is eligible for chapter overwrite.[/green]"
                 )
                 logger.info(f"Job {ulid_input} found eligible for overwrite.")
+                
+                # Confirm with the user before proceeding with the overwrite.
                 confirm = Prompt.ask(
                     "[bold yellow]Confirm overwrite for this job? (y/n):[/bold yellow]"
                 ).lower()
@@ -361,7 +390,9 @@ class ChapterBuilderMenu:
 
     def run(self):
         """
-        Main entry point for the chapter builder menu.
+        Main entry point for the Chapter Builder Menu.
+        Displays the menu options and handles user input to navigate
+        to different chapter building functionalities.
         """
         logger.info("Chapter Builder Menu started. Displaying menu.")
         while True:

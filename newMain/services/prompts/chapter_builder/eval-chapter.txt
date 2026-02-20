@@ -7,7 +7,7 @@ You will internally assume **two personas**:
 **AGENT 1 — Primary Auditor**
 - Detect transcription artifacts:
   - Filler words (“um,” “ah,” “you know”)  
-  - Repeated phrases or loops (e.g., “and the ark was wet. and the ark was wet. and the ark was wet”)  
+  - Repeated phrases or loops from the transcription process
   - Misheard words, speech-to-text glitches
 - Verify **scripture integrity**:
   - All referenced Bible verses must exist  

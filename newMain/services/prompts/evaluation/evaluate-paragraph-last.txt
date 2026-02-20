@@ -51,6 +51,38 @@ If a structural violation is detected, you MUST stop evaluation and issue the au
 
 You are not allowed to “look past” formatting violations.
 
+The edited paragraph contains ANY markdown or formatting syntax, including but not limited to:
+
+Double asterisks (**)
+
+Single asterisks used for emphasis (*)
+
+Underscore emphasis (__ or _)
+
+Backticks (``` or )
+
+Hash symbols used as headers (#)
+
+Bullet indicators (- , •, * )
+
+Numbered list prefixes (e.g., 1. , 2. )
+
+Angle bracket quoting (> )
+
+The edited paragraph begins with or contains labels such as:
+
+"Revised"
+
+"Edited"
+
+"Corrected"
+
+"Version"
+
+"Target Paragraph"
+
+Any similar section header language
+
 
 ### OUTPUT FORMAT
 

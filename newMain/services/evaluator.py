@@ -391,10 +391,35 @@ class Evaluator:
             return None
 
     def _update_paragraph_status(self, paragraph: dict, eval_data: dict):
-        """Updates the paragraph object with evaluation results."""
+        """
+        Analyzes the LLM's evaluation data and updates the paragraph's status.
+        
+        This method is the final arbiter of whether a paragraph 'passes' or 'fails'.
+        It incorporates both the LLM's numeric rating and a hard-coded heuristic 
+        check for illegal formatting characters (asterisks) often introduced 
+        as bolding or placeholders by the model.
+
+        Args:
+            paragraph (dict): The paragraph data structure to be updated.
+            eval_data (dict): Parsed evaluation results from the LLM (rating and critique).
+        """
         rating = eval_data.get("rating")
         critique = eval_data.get("critique")
+        edited_text = paragraph.get("edited", "")
 
+        # --- HEURISTIC CHECK: Asterisks ---
+        # LLMs occasionally include asterisks (e.g., **word**) for emphasis or as 
+        # placeholders. Our downstream pipeline requires clean text, so we 
+        # auto-fail any edit containing these characters.
+        if "*" in edited_text:
+            self.logger.warning("Asterisks detected in edited text. Auto-failing paragraph.")
+            paragraph["evaluation_status"] = "failed"
+            # Append the auto-fail reason to any existing critique from the model
+            paragraph["critique"] = (critique or "") + "\n[AUTO-FAIL: Asterisks detected in text.]"
+            paragraph["rating"] = rating
+            return
+
+        # --- Standard Rating-Based Evaluation ---
         paragraph["critique"] = critique
         paragraph["rating"] = rating
 
@@ -402,12 +427,17 @@ class Evaluator:
             if rating >= self.rating_threshold:
                 paragraph["evaluation_status"] = "passed"
             else:
+                # If rating is below threshold (e.g., < 8), it needs regeneration
                 paragraph["evaluation_status"] = "failed"
         else:
             self.logger.warning(
                 f"Rating is missing or not an integer: {rating}. Defaulting to 'failed'."
             )
             paragraph["evaluation_status"] = "failed"
+            if rating >= self.rating_threshold:
+                paragraph["evaluation_status"] = "passed"
+            else:
+                paragraph["evaluation_status"] = "failed"
 
     def _load_paragraphs(self, file_path: Path) -> list | None:
         """Safely loads paragraphs from a JSON file."""
@@ -705,12 +735,26 @@ class UserInteractiveEvaluator:
             )
         )
 
-        # Update paragraph_data with new evaluation results
+        # Update paragraph_data with new evaluation results for historical reference
         paragraph_data["rating"] = new_rating
         paragraph_data["critique"] = new_critique
         paragraph_data["full_evaluation_output"] = llm_full_output
 
-        # 4. Prompt for user decision in a loop
+        # --- ASTERISK AUTO-FAIL CHECK ---
+        # Before moving to the user or auto-pass check, we verify that the text 
+        # is free from formatting artifacts (*). This ensures the final output 
+        # is clean and ready for publication without manual asterisk stripping.
+        if "*" in edited:
+            # Inform the user on-screen that this was an automatic decision
+            self.console.print("[bold red]Asterisks detected in text! Auto-failing this paragraph.[/bold red]")
+            # Append this reason to the critique so it's documented in paragraphs.json
+            paragraph_data["critique"] = (new_critique or "") + "\n[AUTO-FAIL: Asterisks detected in text.]"
+            # Return "n" to simulate a rejection without further prompting
+            return "n"
+
+        # --- ORCHESTRATION OF USER / AUTO-PASS DECISION ---
+        # 1. If auto-pass is enabled and the rating is high (>= 7), mark as passed.
+        # 2. Otherwise, prompt the user for manual review (y/n/s/v).
         if (
             self.auto_pass_enabled
             and new_rating is not None
@@ -720,11 +764,13 @@ class UserInteractiveEvaluator:
             self.console.print(
                 f"[bold green]LLM rated paragraph {new_rating}/10, which is >= {self.user_review_threshold}. Automatically marking as 'passed'.[/bold green]"
             )
-            return "y"  # Simulate user accepting the paragraph
+            return "y"  # Simulate user acceptance
         else:
+            # Standard manual review loop
             while True:
                 user_decision = self._get_user_evaluation()
                 if user_decision == "v":
+                    # Display the full, raw response from the LLM for deep debugging
                     self.console.print(
                         Panel(
                             llm_full_output,
@@ -733,7 +779,7 @@ class UserInteractiveEvaluator:
                         )
                     )
                     self.console.input("Press Enter to continue...")
-                    # The loop continues, re-offering the accept/reject menu
+                    # Loop back to re-prompt for choice (y/n/s)
                 else:
                     return user_decision  # Return y, n, or s
 
