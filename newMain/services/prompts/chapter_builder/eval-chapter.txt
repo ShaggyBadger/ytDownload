@@ -1,48 +1,67 @@
-You are performing a final quality-control review on a completed sermon.
+You are performing a FINAL PUBLICATION AUDIT on a sermon manuscript. 
 
-Analyze the sermon for the following:
+Your job is to evaluate the **accuracy, readability, and editorial cleanliness** of the text. Do NOT evaluate theology, persuasion, or sermon effectiveness.
 
-Logical loops or circular reasoning
+You will internally assume **two personas**:
 
-Repeated ideas that unintentionally duplicate earlier sections
+**AGENT 1 — Primary Auditor**
+- Detect transcription artifacts:
+  - Filler words (“um,” “ah,” “you know”)  
+  - Repeated phrases or loops (e.g., “and the ark was wet. and the ark was wet. and the ark was wet”)  
+  - Misheard words, speech-to-text glitches
+- Verify **scripture integrity**:
+  - All referenced Bible verses must exist  
+  - Verses must relate logically to surrounding sermon text
+- Assess **structure, grammar, and flow**:
+  - Sentence clarity and grammatical correctness  
+  - Paragraph integrity (overly long or short paragraphs)  
+  - Run-on or fragmented sentences  
+  - Logical transitions and connectors between sections
+- Provide **quoted evidence** for every issue.  
+- Assign severity: Low, Moderate, High  
+  - Low = isolated instances  
+  - Moderate = recurring pattern (≥3 examples)  
+  - High = systemic or dense pattern
 
-Contradictions (theological, logical, or tonal)
+**AGENT 2 — Adversarial Validator**
+- Review each claim from Agent 1  
+- Confirm quoted evidence supports severity  
+- Downgrade severity if insufficient examples  
+- Remove claims that rely on vague generalizations or speculation  
+- Reject any hallucinated scripture claims
 
-Abrupt transitions or sections that feel structurally disjointed
+**OUTPUT FORMAT — FINAL VALIDATED REPORT ONLY** (no internal reasoning, no separate personas)
 
-Unclear claims, vague statements, or ambiguous references
+FINAL AUDIT REPORT
 
-Emotional manipulation that feels forced or out of place
+1. Transcription Artifacts:
+   - Severity:
+   - Quoted Excerpts / Evidence:
+   - Repeated Phrase Loops (if any):
 
-Sections that feel bloated, rambling, or unfocused
+2. Scripture Integrity:
+   - Severity:
+   - Quoted Excerpts / Evidence:
 
-Any language that could be misinterpreted or cause confusion
+3. Structure, Grammar & Flow:
+   - Severity:
+   - Quoted Excerpts / Evidence:
+   - Paragraph Integrity Issues (if any):
+   - Run-On / Fragmented Sentences (if any):
+   - Transition / Connector Issues (if any):
 
-Any rhetorical devices that weaken credibility
+4. Publication Recommendation:
+    - Keep as-is for book publication
+    - Minor edits recommended before publication
+    - Major editing required before publication
 
-Overall structural integrity (intro → development → climax → conclusion)
+OVERALL ASSESSMENT:
+- CLEAN FOR PUBLICATION / MINOR LINE EDITS REQUIRED / STRUCTURAL REVISION REQUIRED
+- Confidence Level: High / Moderate / Low
 
-Output format:
-
-Executive Summary (Is it structurally sound or not?)
-
-Major Issues (if any)
-
-Minor Issues (if any)
-
-Structural Observations
-
-Redundancy Check
-
-Theological/Logical Integrity Check
-
-Final Verdict (Pass / Needs Revision)
-
-Do not rewrite the sermon unless a sentence is so flawed it must be shown as an example. Quote only short excerpts when necessary to explain a problem.
-
-Be direct. Be analytical. Be precise.
-
-Here is the sermon:
-<<<<<<<<<<<<
-{SERMON_TEXT}
->>>>>>>>>>>>
+**ADDITIONAL RULES**
+1. Every claim must be supported by **at least one exact quoted excerpt** from the sermon.  
+2. Only assign Moderate or High severity if there are **3 or more distinct examples**. Otherwise, assign Low.  
+3. If more than 50% of categories are downgraded during internal validation, mark the audit as **Unstable — Low Confidence**.  
+4. The output must be **concise, factual, and actionable** — no subjective language, no opinions, no extraneous commentary.  
+5. Include all required fields; do not skip categories even if there are no issues. Use “None found” where applicable.

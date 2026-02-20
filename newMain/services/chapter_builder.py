@@ -5,6 +5,7 @@ from pathlib import Path
 from joshlib.ollama import OllamaClient
 
 from rich.console import Console
+from rich.prompt import Confirm
 
 from database.session_manager import get_session
 from database.models import JobInfo, JobStage, StageState
@@ -149,54 +150,96 @@ class ChapterBuilder:
             final_document_content += edited_content
             logger.debug("Final document content assembled.")
 
-            # --- Save Final Document ---
-            final_document_path = job_directory / config.FINAL_DOCUMENT_NAME
-            logger.info(
-                f"Attempting to save final chapter document to {final_document_path}"
-            )
-            try:
-                with open(final_document_path, "w") as f:
-                    f.write(final_document_content)
-                logger.info(
-                    f"Successfully built and saved chapter document at {final_document_path}."
-                )
-                self.console.print(
-                    f"[green]Successfully built chapter document at {final_document_path}[/green]"
-                )
-            except Exception:
-                logger.error(
-                    f"Error saving final document to {final_document_path}.",
-                    exc_info=True,
-                )
-                self.console.print(
-                    f"[red]Error saving final document to {final_document_path}. Check logs.[/red]"
-                )
-                return
+            # --- Send to Ollama for final evaluation ---
+            logger.info("Sending final document content to Ollama for evaluation.")
+            
+            evaluation_report = self.evaluate_chapter_with_llm(final_document_content)
 
-            # --- Update Database Stage ---
-            build_chapter_stage = (
-                session.query(JobStage)
-                .filter_by(job_id=self.job_id, stage_name="build_chapter")
-                .first()
-            )
+            if evaluation_report:
+                self.console.print("\n[bold yellow]--- LLM Chapter Evaluation Report ---[/bold yellow]")
+                self.console.print(evaluation_report)
+                self.console.print("[bold yellow]-------------------------------------[/bold yellow]\n")
 
-            if build_chapter_stage:
-                build_chapter_stage.output_path = str(final_document_path)
-                build_chapter_stage.state = StageState.success
-                session.commit()
+                if not self.confirm_chapter_save():
+                    logger.info(f"User chose to cancel saving the chapter for Job ID {self.job_id}.")
+                    self.console.print("[red]Chapter save cancelled by user.[/red]")
+                    return
+
+                # --- Save Final Document ---
+                final_document_path = job_directory / config.FINAL_DOCUMENT_NAME
                 logger.info(
-                    f"Job ID {self.job_id}: 'build_chapter' stage marked as SUCCESS with output path: {final_document_path}."
+                    f"Attempting to save final chapter document to {final_document_path}"
                 )
-                self.console.print(
-                    f"[green]Job {job.job_ulid}: 'build_chapter' stage marked as SUCCESS.[/green]"
+                try:
+                    with open(final_document_path, "w") as f:
+                        f.write(final_document_content)
+                    logger.info(
+                        f"Successfully built and saved chapter document at {final_document_path}."
+                    )
+                    self.console.print(
+                        f"[green]Successfully built chapter document at {final_document_path}[/green]"
+                    )
+                except Exception:
+                    logger.error(
+                        f"Error saving final document to {final_document_path}.",
+                        exc_info=True,
+                    )
+                    self.console.print(
+                        f"[red]Error saving final document to {final_document_path}. Check logs.[/red]"
+                    )
+                    return
+
+                # --- Update Database Stage ---
+                build_chapter_stage = (
+                    session.query(JobStage)
+                    .filter_by(job_id=self.job_id, stage_name="build_chapter")
+                    .first()
                 )
+
+                if build_chapter_stage:
+                    build_chapter_stage.output_path = str(final_document_path)
+                    build_chapter_stage.state = StageState.success
+                    session.commit()
+                    logger.info(
+                        f"Job ID {self.job_id}: 'build_chapter' stage marked as SUCCESS with output path: {final_document_path}."
+                    )
+                    self.console.print(
+                        f"[green]Job {job.job_ulid}: 'build_chapter' stage marked as SUCCESS.[/green]"
+                    )
+                else:
+                    logger.warning(
+                        f"Job ID {job.job_ulid}: 'build_chapter' stage not found in database. Cannot update its state."
+                    )
+                    self.console.print(
+                        f"[yellow]Job {job.job_ulid}: 'build_chapter' stage not found in database.[/yellow]"
+                    )
+
             else:
-                logger.warning(
-                    f"Job ID {job.job_ulid}: 'build_chapter' stage not found in database. Cannot update its state."
+                logger.error(
+                    f"Ollama evaluation failed or returned empty for Job ID {self.job_id}. Chapter document will not be saved."
                 )
                 self.console.print(
-                    f"[yellow]Job {job.job_ulid}: 'build_chapter' stage not found in database.[/red]"
+                    f"[red]Ollama evaluation failed or returned empty for job {job.job_ulid}. Chapter document not saved.[/red]"
                 )
 
-    def evaluate_chapter(self):
-        pass
+    def confirm_chapter_save(self) -> bool:
+        """Prompts the user to confirm if they are satisfied with the LLM report."""
+        from rich.prompt import Confirm
+        return Confirm.ask("Are you satisfied with the LLM report and want to save this chapter?")
+
+    def evaluate_chapter_with_llm(self, sermon_text):
+        # return True if good, False if bad
+        BASE_DIR = Path(__file__).resolve().parent
+        PROMPTS_DIR = BASE_DIR / "prompts/chapter_builder"
+
+        prompt = PROMPTS_DIR / "eval-chapter.txt"
+        prompt = prompt.read_text()
+        prompt = prompt.format(SERMON_TEXT=sermon_text)
+
+        try:
+            response = self.ollama_client.submit_prompt(prompt)
+            logger.debug(f"Ollama evaluation response: {response}")
+            return response.output
+        except Exception as e:
+            logger.error(f"Error evaluating chapter with Ollama: {e}")
+            return None
