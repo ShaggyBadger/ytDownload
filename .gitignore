@@ -13,6 +13,7 @@ __pycache__/
 *.csv
 *.log
 *.ini
+*.ods
 alembic/
 *.mp3
 newMain/jobs/
