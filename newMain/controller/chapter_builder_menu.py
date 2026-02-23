@@ -9,6 +9,7 @@ import json
 from database.session_manager import get_session
 from database.models import JobInfo, VideoInfo, JobStage, StageState
 from services.chapter_builder import ChapterBuilder
+from services.metadata_extractor import MetadataExtractor  # Import MetadataExtractor
 from config import config
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ class ChapterBuilderMenu:
     or overwrite existing chapter documents. It interacts with the `ChapterBuilder`
     service to perform the actual document creation.
     """
+
     def __init__(self):
         """
         Initializes the ChapterBuilderMenu with console instance and menu options.
@@ -91,7 +93,7 @@ class ChapterBuilderMenu:
                             JobStage.stage_name == "build_chapter",
                         )
                     )
-                    .distinct() # Ensure unique job entries.
+                    .distinct()  # Ensure unique job entries.
                     .all()
                 )
                 logger.debug(
@@ -101,7 +103,10 @@ class ChapterBuilderMenu:
                 # Filter candidates based on the 'build_chapter' stage state.
                 # A job is eligible if its 'build_chapter' stage is currently 'pending'.
                 for job_data in candidate_jobs_query:
-                    if job_data.build_chapter_stage_state.value == StageState.pending.value:
+                    if (
+                        job_data.build_chapter_stage_state.value
+                        == StageState.pending.value
+                    ):
                         jobs_list.append(
                             {
                                 "id": job_data.job_id,
@@ -157,7 +162,7 @@ class ChapterBuilderMenu:
         # table.add_column("Final Document Path", style="dim")
         table.add_column("Build Chapter Status", style="yellow")
 
-        job_map = {} # Map display numbers to job data for easy lookup.
+        job_map = {}  # Map display numbers to job data for easy lookup.
         for i, job_data in enumerate(jobs_to_build):
             display_num = str(i + 1)
             job_map[display_num] = job_data
@@ -225,7 +230,7 @@ class ChapterBuilderMenu:
         visual separation and focus during bulk operations.
         """
         logger.info("Initiating bulk chapter build for all eligible jobs.")
-        self.console.clear() # Clear console before starting bulk processing overview.
+        self.console.clear()  # Clear console before starting bulk processing overview.
         self.console.rule(
             "[bold blue]Building Chapters for All Eligible Jobs[/bold blue]"
         )
@@ -248,7 +253,9 @@ class ChapterBuilderMenu:
             # Clear console for each job and display a rule for visual demarcation.
             # This helps to focus the user's attention on the current job being processed.
             self.console.clear()
-            self.console.rule(f"[bold blue]Processing Chapter ({i+1}/{len(jobs_to_build)})[/bold blue]")
+            self.console.rule(
+                f"[bold blue]Processing Chapter ({i+1}/{len(jobs_to_build)})[/bold blue]"
+            )
             self.console.print(
                 f"[bold white]Processing Job:[/bold white] {job_data['job_ulid']} - [dim]{job_data['title']}[/dim]"
             )
@@ -266,7 +273,7 @@ class ChapterBuilderMenu:
                     f"Error building chapter document for Job ULID: {job_data['job_ulid']}.",
                     exc_info=True,
                 )
-            self.console.print() # Add an empty line for readability between job outputs.
+            self.console.print()  # Add an empty line for readability between job outputs.
 
         self.console.print("[green]Finished processing all eligible jobs.[/green]")
         logger.info("Finished bulk chapter building for all eligible jobs.")
@@ -274,7 +281,7 @@ class ChapterBuilderMenu:
 
     def _overwrite_chapter_document(self):
         """
-        Allows a user to specify a job ULID and forces an overwrite of its
+        Allows a user to specify a job ID and forces an overwrite of its
         chapter document, provided the job meets basic eligibility (metadata
         and local LLM editing stages are successful). This is useful for
         re-generating a chapter even if the final document already exists.
@@ -283,25 +290,37 @@ class ChapterBuilderMenu:
         self.console.clear()
         self.console.rule("[bold blue]Overwrite Chapter Document[/bold blue]")
 
-        ulid_input = Prompt.ask(
-            "[bold yellow]Enter the Job ULID to overwrite (or 'b' to go back)[/bold yellow]"
+        job_id_input_str = Prompt.ask(
+            "[bold yellow]Enter the Job ID to overwrite (or 'b' to go back)[/bold yellow]"
         ).strip()
-        logger.debug("User entered ULID for overwrite: '%s'", ulid_input)
-        if ulid_input.lower() == "b":
+        logger.debug("User entered Job ID for overwrite: '%s'", job_id_input_str)
+        if job_id_input_str.lower() == "b":
             logger.info("User opted to go back from overwrite process.")
             return
 
         try:
+            job_id_input = int(job_id_input_str)
+        except ValueError:
+            logger.warning(
+                f"Invalid Job ID entered for overwrite: '{job_id_input_str}'. Must be an integer."
+            )
+            self.console.print(
+                f"[red]Invalid Job ID '{job_id_input_str}'. Please enter an integer.[/red]"
+            )
+            self.console.input("Press Enter to continue...")
+            return
+
+        try:
             with get_session() as session:
-                # Find the job by ULID.
-                job_info = session.query(JobInfo).filter_by(job_ulid=ulid_input).first()
+                # Find the job by ID.
+                job_info = session.query(JobInfo).filter_by(id=job_id_input).first()
 
                 if not job_info:
                     logger.warning(
-                        f"Job with ULID '{ulid_input}' not found for overwrite."
+                        f"Job with ID '{job_id_input}' not found for overwrite."
                     )
                     self.console.print(
-                        f"[red]Job with ULID '{ulid_input}' not found.[/red]"
+                        f"[red]Job with ID '{job_id_input}' not found.[/red]"
                     )
                     self.console.input("Press Enter to continue...")
                     return
@@ -319,38 +338,123 @@ class ChapterBuilderMenu:
                 )
 
                 logger.debug(
-                    f"Job {ulid_input}: Metadata stage state: {metadata_stage.state if metadata_stage else 'N/A'}"
+                    f"Job {job_id_input}: Metadata stage state: {metadata_stage.state if metadata_stage else 'N/A'}"
                 )
                 logger.debug(
-                    f"Job {ulid_input}: Edit LLM stage state: {edit_llm_stage.state if edit_llm_stage else 'N/A'}"
+                    f"Job {job_id_input}: Edit LLM stage state: {edit_llm_stage.state if edit_llm_stage else 'N/A'}"
                 )
 
                 # Ensure prerequisite stages are successful before allowing overwrite.
+                # Ensure prerequisite stages are successful before allowing overwrite.
                 if not metadata_stage or metadata_stage.state != StageState.success:
-                    logger.warning(
-                        f"Job {ulid_input}: Metadata extraction stage is not successful. Cannot overwrite."
-                    )
                     self.console.print(
-                        f"[red]Job {ulid_input}: Metadata extraction stage is not successful. Cannot overwrite.[/red]"
+                        f"[red]Job {job_id_input}: Metadata extraction stage is not successful (current state: {metadata_stage.state.value if metadata_stage else 'N/A'}).[/red]"
                     )
-                    self.console.input("Press Enter to continue...")
-                    return
+                    logger.warning(
+                        f"Job {job_id_input}: Metadata extraction stage is not successful. Asking user to re-process."
+                    )
+                    if (
+                        Prompt.ask(
+                            "[bold yellow]Do you want to re-process the metadata for this job? (y/n)[/bold yellow]"
+                        ).lower()
+                        == "y"
+                    ):
+                        logger.info(
+                            f"User chose to re-process metadata for Job ID {job_id_input}."
+                        )
+                        # Reset metadata stage to pending for reprocessing
+                        if metadata_stage:
+                            metadata_stage.state = StageState.pending
+                            session.add(metadata_stage)
+                            session.commit()
+                            self.console.print(
+                                "[yellow]Metadata stage reset to pending.[/yellow]"
+                            )
+                            logger.info(
+                                f"Job {job_id_input}: Metadata stage reset to pending for reprocessing."
+                            )
+                        else:
+                            self.console.print(
+                                "[red]Metadata stage record not found. Cannot reset.[/red]"
+                            )
+                            logger.error(
+                                f"Job {job_id_input}: Metadata stage record not found. Cannot reset for reprocessing."
+                            )
+                            self.console.input("Press Enter to continue...")
+                            return
+
+                        self.console.print(
+                            "[cyan]Initiating metadata extraction...[/cyan]"
+                        )
+                        logger.info(
+                            f"Initiating MetadataExtractor for Job ID {job_id_input}."
+                        )
+                        try:
+                            extractor = MetadataExtractor(job_id=job_info.id)
+                            processing_successful = extractor.process_metadata()
+                            if processing_successful:
+                                # Reload metadata_stage from session to get updated status
+                                session.refresh(metadata_stage)
+                                if metadata_stage.state == StageState.success:
+                                    self.console.print(
+                                        "[green]Metadata re-processed successfully.[/green]"
+                                    )
+                                    logger.info(
+                                        f"Job {job_id_input}: Metadata re-processed successfully."
+                                    )
+                                else:
+                                    self.console.print(
+                                        "[red]Metadata re-processing completed, but stage is not successful. Please check logs.[/red]"
+                                    )
+                                    logger.warning(
+                                        f"Job {job_id_input}: Metadata re-processing completed, but stage is not successful."
+                                    )
+                                    self.console.input("Press Enter to continue...")
+                                    return
+                            else:
+                                self.console.print(
+                                    "[red]Metadata re-processing failed. Please check logs for details.[/red]"
+                                )
+                                logger.error(
+                                    f"Job {job_id_input}: Metadata re-processing failed."
+                                )
+                                self.console.input("Press Enter to continue...")
+                                return
+                        except Exception as e:
+                            logger.error(
+                                f"Error during metadata re-processing for Job ID {job_id_input}: {e}",
+                                exc_info=True,
+                            )
+                            self.console.print(
+                                f"[red]An error occurred during metadata re-processing. Check logs.[/red]"
+                            )
+                            self.console.input("Press Enter to continue...")
+                            return
+                    else:
+                        self.console.print(
+                            "[yellow]Metadata re-processing declined. Cannot overwrite chapter.[/yellow]"
+                        )
+                        logger.info(
+                            f"Job {job_id_input}: User declined metadata re-processing. Aborting overwrite."
+                        )
+                        self.console.input("Press Enter to continue...")
+                        return
 
                 if not edit_llm_stage or edit_llm_stage.state != StageState.success:
                     logger.warning(
-                        f"Job {ulid_input}: Local LLM editing stage is not successful. Cannot overwrite."
+                        f"Job {job_id_input}: Local LLM editing stage is not successful. Cannot overwrite."
                     )
                     self.console.print(
-                        f"[red]Job {ulid_input}: Local LLM editing stage is not successful. Cannot overwrite.[/red]"
+                        f"[red]Job {job_id_input}: Local LLM editing stage is not successful. Cannot overwrite.[/red]"
                     )
                     self.console.input("Press Enter to continue...")
                     return
 
                 self.console.print(
-                    f"[green]Job {ulid_input} is eligible for chapter overwrite.[/green]"
+                    f"[green]Job {job_id_input} is eligible for chapter overwrite.[/green]"
                 )
-                logger.info(f"Job {ulid_input} found eligible for overwrite.")
-                
+                logger.info(f"Job {job_id_input} found eligible for overwrite.")
+
                 # Confirm with the user before proceeding with the overwrite.
                 confirm = Prompt.ask(
                     "[bold yellow]Confirm overwrite for this job? (y/n):[/bold yellow]"
@@ -362,29 +466,29 @@ class ChapterBuilderMenu:
                         chapter_builder_service = ChapterBuilder(job_id=job_info.id)
                         chapter_builder_service.build_chapter_document()
                         self.console.print(
-                            f"[green]Chapter document for {ulid_input} overwritten.[/green]"
+                            f"[green]Chapter document for Job ID {job_id_input} overwritten.[/green]"
                         )
                         logger.info(
-                            f"Chapter document for {ulid_input} successfully overwritten."
+                            f"Chapter document for Job ID {job_id_input} successfully overwritten."
                         )
                     except Exception:
                         logger.error(
-                            f"Error overwriting chapter document for Job ULID: {ulid_input}.",
+                            f"Error overwriting chapter document for Job ID: {job_id_input}.",
                             exc_info=True,
                         )
                         self.console.print(
-                            f"[red]Error overwriting chapter document for {ulid_input}. Check logs.[/red]"
+                            f"[red]Error overwriting chapter document for Job ID {job_id_input}. Check logs.[/red]"
                         )
                 else:
                     self.console.print("[yellow]Overwrite cancelled.[/yellow]")
                     logger.info(
-                        f"Overwrite for Job ULID {ulid_input} cancelled by user."
+                        f"Overwrite for Job ID {job_id_input} cancelled by user."
                     )
 
                 self.console.input("Press Enter to continue...")
         except Exception:
             logger.error(
-                f"An error occurred during the overwrite chapter document process for ULID '{ulid_input}'.",
+                f"An error occurred during the overwrite chapter document process for Job ID '{job_id_input}'.",
                 exc_info=True,
             )
 

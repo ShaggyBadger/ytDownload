@@ -7,6 +7,7 @@ if Gemini encounters issues (e.g., API quota, significant word count discrepanci
 The class handles text cleaning, AI interaction, word count integrity checks,
 retries, and interactive user prompts for fallback decisions.
 """
+
 import logging
 from rich.console import Console
 from rich.prompt import Prompt
@@ -34,6 +35,7 @@ class Formatter:
     and falling back to Ollama AI based on success criteria and user preference.
     It cleans text, manages AI calls, performs integrity checks, and handles retries.
     """
+
     def __init__(self):
         """
         Initializes the Formatter with Rich Console for CLI output,
@@ -93,7 +95,7 @@ class Formatter:
 
             # Prepare the text: remove weird mid-sentence breaks and make it one big block.
             clean_text = self._clean_text(raw_text)
-            
+
             # Initialize variables for the Gemini retry loop.
             max_gemini_attempts = 3
             formatted_text = None
@@ -102,71 +104,108 @@ class Formatter:
 
             # Tier 1: Attempt Gemini formatting with retries for word count integrity.
             for attempt in range(1, max_gemini_attempts + 1):
-                logger.info(f"Attempting Gemini formatting (Attempt {attempt}/{max_gemini_attempts}).")
-                self.console.print(f"[bold green]Attempting Gemini formatting (Attempt {attempt}/{max_gemini_attempts})...[/bold green]")
-                
+                logger.info(
+                    f"Attempting Gemini formatting (Attempt {attempt}/{max_gemini_attempts})."
+                )
+                self.console.print(
+                    f"[bold green]Attempting Gemini formatting (Attempt {attempt}/{max_gemini_attempts})...[/bold green]"
+                )
+
                 # Call Gemini for formatting.
                 temp_formatted = self._run_gemini_formatting(clean_text)
-                
+
                 if temp_formatted:
                     last_attempt_result = temp_formatted
                     # Perform an integrity check: Compare word counts to detect significant changes.
                     formatted_word_count = len(temp_formatted.split())
-                    
+
                     variance = 0
                     if original_word_count > 0:
-                        variance = abs(original_word_count - formatted_word_count) / original_word_count
-                    
-                    if variance <= 0.02:  # If variance is within the 2% threshold, we accept the result.
+                        variance = (
+                            abs(original_word_count - formatted_word_count)
+                            / original_word_count
+                        )
+
+                    if (
+                        variance <= 0.02
+                    ):  # If variance is within the 2% threshold, we accept the result.
                         formatted_text = temp_formatted
-                        logger.info("Gemini formatting successful (within word count threshold).")
-                        self.console.print("[bold green]Gemini formatting successful![/bold green]")
+                        logger.info(
+                            "Gemini formatting successful (within word count threshold)."
+                        )
+                        self.console.print(
+                            "[bold green]Gemini formatting successful![/bold green]"
+                        )
                         break  # Exit the retry loop as a satisfactory result was obtained.
                     else:
-                        logger.warning(f"Attempt {attempt} word count variance too high: {variance:.2%}")
-                        self.console.print(f"[bold yellow]Warning: Attempt {attempt} resulted in a {variance:.2%} change in word count ({formatted_word_count} vs {original_word_count} words).[/bold yellow]")
+                        logger.warning(
+                            f"Attempt {attempt} word count variance too high: {variance:.2%}"
+                        )
+                        self.console.print(
+                            f"[bold yellow]Warning: Attempt {attempt} resulted in a {variance:.2%} change in word count ({formatted_word_count} vs {original_word_count} words).[/bold yellow]"
+                        )
                 else:
-                    logger.warning(f"Attempt {attempt} failed to return a result from Gemini.")
+                    logger.warning(
+                        f"Attempt {attempt} failed to return a result from Gemini."
+                    )
 
                 # If not the last attempt, pause before retrying.
                 if attempt < max_gemini_attempts:
-                    self.console.print(f"[bold yellow]Sleeping for 15 seconds before attempt {attempt + 1}...[/bold yellow]")
+                    self.console.print(
+                        f"[bold yellow]Sleeping for 15 seconds before attempt {attempt + 1}...[/bold yellow]"
+                    )
                     time.sleep(15)
 
             # If after all Gemini attempts, we still don't have a satisfactory formatted_text.
             if not formatted_text:
-                logger.warning("All Gemini formatting attempts failed (or threshold exceeded).")
-                self.console.print("[bold red]Gemini formatting failed or was rejected after 3 attempts.[/bold red]")
-                
+                logger.warning(
+                    "All Gemini formatting attempts failed (or threshold exceeded)."
+                )
+                self.console.print(
+                    "[bold red]Gemini formatting failed or was rejected after 3 attempts.[/bold red]"
+                )
+
                 # If Gemini did return a result, even if it failed the threshold, offer to proceed with it.
                 if last_attempt_result:
                     gemini_count = len(last_attempt_result.split())
                     diff = gemini_count - original_word_count
                     # Prompt user to accept the high-variance Gemini result or discard it.
-                    if Prompt.ask(
-                        f"[bold yellow]Word count mismatch detected. Gemini: {gemini_count} Original: {original_word_count}. Difference: {diff} words. Proceed?[/bold yellow]",
-                        choices=["y", "n"],
-                        default="n"
-                    ).lower() == "y":
+                    if (
+                        Prompt.ask(
+                            f"[bold yellow]Word count mismatch detected. Gemini: {gemini_count} Original: {original_word_count}. Difference: {diff} words. Proceed?[/bold yellow]",
+                            choices=["y", "n"],
+                            default="n",
+                        ).lower()
+                        == "y"
+                    ):
                         formatted_text = last_attempt_result  # User chose to accept the divergent Gemini result.
-                
+
                 # If we still don't have formatted_text (either no Gemini result or user rejected it).
                 if not formatted_text:
                     # Tier 2: Offer Ollama as a fallback.
-                    if Prompt.ask(
-                        "[bold cyan]Would you like to use Ollama as a fallback for formatting?[/bold cyan]",
-                        choices=["y", "n"],
-                        default="y"
-                    ).lower() == "y":
+                    if (
+                        Prompt.ask(
+                            "[bold cyan]Would you like to use Ollama as a fallback for formatting?[/bold cyan]",
+                            choices=["y", "n"],
+                            default="y",
+                        ).lower()
+                        == "y"
+                    ):
                         logger.info("User opted for Ollama fallback.")
-                        self.console.print("[bold blue]Starting Ollama fallback formatting (this may take a while)...[/bold blue]")
+                        self.console.print(
+                            "[bold blue]Starting Ollama fallback formatting (this may take a while)...[/bold blue]"
+                        )
                         paragraphs = self._run_ollama_formatting(clean_text)
                         if paragraphs:
                             formatted_text = "\n\n".join(paragraphs)
-                            self.console.print("[bold green]Ollama fallback successful.[/bold green]")
+                            self.console.print(
+                                "[bold green]Ollama fallback successful.[/bold green]"
+                            )
                         else:
                             logger.error("Ollama fallback also failed.")
-                            self.console.print("[bold red]Ollama fallback failed.[/bold red]")
+                            self.console.print(
+                                "[bold red]Ollama fallback failed.[/bold red]"
+                            )
                             return None  # Ollama fallback also failed.
                     else:
                         logger.info("User declined Ollama fallback.")
@@ -180,7 +219,9 @@ class Formatter:
             return output_path
 
         except Exception as e:
-            logger.exception("An unexpected error occurred during the formatting process.")
+            logger.exception(
+                "An unexpected error occurred during the formatting process."
+            )
             raise
 
     def _run_gemini_formatting(self, text: str) -> Optional[str]:
@@ -194,15 +235,20 @@ class Formatter:
             Optional[str]: The Gemini-formatted text if successful, otherwise None.
         """
         # Construct the path to the Gemini prompt file.
-        prompt_path = Path(__file__).parent / "prompts" / "formatter" / "gemini-format-paragraphs.txt"
+        prompt_path = (
+            Path(__file__).parent
+            / "prompts"
+            / "formatter"
+            / "gemini-format-paragraphs.txt"
+        )
         if not prompt_path.exists():
             logger.error(f"Gemini prompt file not found at {prompt_path}")
             return None
-            
+
         # Read the prompt template and inject the sermon text.
         prompt_template = prompt_path.read_text(encoding="utf-8")
         prompt = prompt_template.format(SERMON_TEXT=text)
-        
+
         try:
             # Submit the prompt to the Gemini client.
             # retries=1 is set here because the Formatter.run method handles higher-level retries.
@@ -213,10 +259,14 @@ class Formatter:
                 logger.error(f"Gemini formatting failed: {result.error_message}")
                 # Provide user feedback if a quota error is explicitly detected.
                 if "quota" in str(result.error_message).lower():
-                    self.console.print("[bold red]Gemini API quota exceeded.[/bold red]")
+                    self.console.print(
+                        "[bold red]Gemini API quota exceeded.[/bold red]"
+                    )
                 return None
         except Exception as e:
-            logger.error(f"An unexpected error occurred during the Gemini formatting call: {e}")
+            logger.error(
+                f"An unexpected error occurred during the Gemini formatting call: {e}"
+            )
             return None
 
     def _run_ollama_formatting(self, clean_text: str) -> Optional[List[str]]:
@@ -247,7 +297,9 @@ class Formatter:
                 logger.info(
                     f"Processing: {current_idx}/{total} sentences for paragraphing (Ollama)."
                 )
-                self.console.print(f"[bold blue]Processing chunk {current_idx // self.sentence_chunk_size + 1} of sentences for Ollama paragraphing...[/bold blue]")
+                self.console.print(
+                    f"[bold blue]Processing chunk {current_idx // self.sentence_chunk_size + 1} of sentences for Ollama paragraphing...[/bold blue]"
+                )
 
                 chunk = sentences[current_idx : current_idx + self.sentence_chunk_size]
                 # Provide context from previous paragraphs to help Ollama make better decisions.
@@ -283,25 +335,31 @@ class Formatter:
                         and break_offset < 3
                         and (current_idx + break_offset < total)
                     ):
-                        move_by = len(chunk) # Take the whole chunk if break is too short.
+                        move_by = len(
+                            chunk
+                        )  # Take the whole chunk if break is too short.
                     elif break_offset and break_offset > 0:
-                        move_by = break_offset # Use Ollama's suggested break point.
+                        move_by = break_offset  # Use Ollama's suggested break point.
                     else:
-                        move_by = len(chunk) # Default: take the whole chunk.
+                        move_by = len(chunk)  # Default: take the whole chunk.
 
                     # Join the sentences to form a new paragraph and add to the list.
                     new_para = " ".join(sentences[current_idx : current_idx + move_by])
                     paragraphs.append(new_para.strip())
-                    current_idx += move_by # Advance the current index.
+                    current_idx += move_by  # Advance the current index.
 
                 except Exception as e:
-                    logger.error(f"An error occurred at sentence {current_idx} during Ollama processing: {e}")
+                    logger.error(
+                        f"An error occurred at sentence {current_idx} during Ollama processing: {e}"
+                    )
                     paragraphs.append(" ".join(sentences[current_idx:]).strip())
                     break
-            
+
             return paragraphs
         except Exception as e:
-            logger.error(f"The Ollama formatting loop encountered an unexpected error: {e}")
+            logger.error(
+                f"The Ollama formatting loop encountered an unexpected error: {e}"
+            )
             return None
 
     def _split_into_sentences(self, text: str) -> List[str]:
@@ -339,7 +397,9 @@ class Formatter:
 
         if context_paras:
             prompt.append("### PREVIOUS CONTEXT")
-            prompt.append(context_paras[-1])  # Only the last context paragraph is usually sufficient.
+            prompt.append(
+                context_paras[-1]
+            )  # Only the last context paragraph is usually sufficient.
             prompt.append("---")
 
         prompt.append("### SENTENCES")

@@ -220,7 +220,9 @@ class MetadataExtractor:
     # Each _generate_<category> method is responsible for using the LLM to create specific metadata.
     # To add a new category, follow the steps outlined in the class docstring.
 
-    def _generate_title(self, transcript_text: str, current_metadata: dict) -> str:
+    def _generate_title(
+        self, transcript_text: str, current_metadata: dict
+    ) -> Any:  # Changed return type to Any
         """
         Generates a title for the sermon using the LLM based on the transcript text.
 
@@ -230,7 +232,7 @@ class MetadataExtractor:
                                      a new category depends on previously generated ones).
 
         Returns:
-            str: The generated title.
+            Any: The raw response object from the LLM client.
         """
         logger.debug(f"Generating 'title' for Job ID: {self.job_id} using LLM.")
         prompt_path = (
@@ -246,7 +248,7 @@ class MetadataExtractor:
         result = self.llm_client.submit_prompt(prompt)
         return result
 
-    def _generate_thesis(self, transcript_text: str, current_metadata: dict) -> str:
+    def _generate_thesis(self, transcript_text: str, current_metadata: dict) -> Any:
         """
         Generates a thesis statement for the sermon using the LLM.
         (Refer to _generate_title for detailed comment structure, as the pattern is identical)
@@ -263,7 +265,7 @@ class MetadataExtractor:
         r1_response = self.ollama_client.submit_prompt(prompt)
         if not r1_response.ok:
             logger.error(f"First thesis generation failed: {r1_response.error_message}")
-            return f"[ERROR: {r1_response.error_message}]"
+            return r1_response  # Return the response object directly on failure
         r1 = r1_response.output
         logger.debug("First thesis generation complete...")
 
@@ -272,14 +274,14 @@ class MetadataExtractor:
             logger.error(
                 f"Second thesis generation failed: {r2_response.error_message}"
             )
-            return f"[ERROR: {r2_response.error_message}]"
+            return r2_response  # Return the response object directly on failure
         r2 = r2_response.output
         logger.debug("Second thesis generation complete...")
 
         r3_response = self.ollama_client.submit_prompt(prompt)
         if not r3_response.ok:
             logger.error(f"Third thesis generation failed: {r3_response.error_message}")
-            return f"[ERROR: {r3_response.error_message}]"
+            return r3_response  # Return the response object directly on failure
         r3 = r3_response.output
         logger.debug("Third thesis generation complete...")
 
@@ -289,17 +291,10 @@ class MetadataExtractor:
 
         logger.debug("Submitting thesis decision prompt to LLM...")
         thesis_response = self.ollama_client.submit_prompt(decision_prompt)
-        if not thesis_response.ok:
-            logger.error(
-                f"Final thesis decision generation failed: {thesis_response.error_message}"
-            )
-            return f"[ERROR: {thesis_response.error_message}]"
-        thesis = thesis_response.output
-        logger.debug(f"Thesis decision generation complete: {thesis}")
+        # Always return the thesis_response object for process_metadata to handle
+        return thesis_response
 
-        return thesis
-
-    def _generate_summary(self, transcript_text: str, current_metadata: dict) -> str:
+    def _generate_summary(self, transcript_text: str, current_metadata: dict) -> Any:
         """
         Generates a summary for the sermon using the LLM.
         (Refer to _generate_title for detailed comment structure, as the pattern is identical)
@@ -310,7 +305,7 @@ class MetadataExtractor:
         prompt = prompt_template.format(SERMON_TEXT=transcript_text)
         return self.ollama_client.submit_prompt(prompt)
 
-    def _generate_outline(self, transcript_text: str, current_metadata: dict) -> str:
+    def _generate_outline(self, transcript_text: str, current_metadata: dict) -> Any:
         """
         Generates an outline for the sermon using the LLM.
         (Refer to _generate_title for detailed comment structure, as the pattern is identical)
@@ -321,7 +316,7 @@ class MetadataExtractor:
         prompt = prompt_template.format(SERMON_TEXT=transcript_text)
         return self.ollama_client.submit_prompt(prompt)
 
-    def _generate_tone(self, transcript_text: str, current_metadata: dict) -> str:
+    def _generate_tone(self, transcript_text: str, current_metadata: dict) -> Any:
         """
         Generates a description of the tone of the sermon using the LLM.
         (Refer to _generate_title for detailed comment structure, as the pattern is identical)
@@ -332,7 +327,7 @@ class MetadataExtractor:
         prompt = prompt_template.format(SERMON_TEXT=transcript_text)
         return self.ollama_client.submit_prompt(prompt)
 
-    def _generate_main_text(self, transcript_text: str, current_metadata: dict) -> str:
+    def _generate_main_text(self, transcript_text: str, current_metadata: dict) -> Any:
         """
         Generates the main text content, potentially re-summarized or refined, using the LLM.
         (Refer to _generate_title for detailed comment structure, as the pattern is identical)
@@ -407,14 +402,11 @@ class MetadataExtractor:
                     )
                     return True  # Not a quota error
 
-                all_categories_filled = True  # Flag to track if all categories have been successfully generated
+                all_categories_successfully_processed = True  # Flag to track if all categories have been successfully generated
                 # Iterate through each defined metadata category
                 for category in config.METADATA_CATEGORIES:
                     # Check if the current category's value is missing or None
                     if metadata.get(category) is None:
-                        all_categories_filled = (
-                            False  # Mark that at least one category is not filled
-                        )
                         logger.info(
                             f"Generating missing metadata: {category} for Job ID: {self.job_id}."
                         )
@@ -428,6 +420,9 @@ class MetadataExtractor:
                         generation_method = getattr(self, generation_method_name, None)
 
                         if generation_method:
+                            category_filled_this_attempt = (
+                                False  # Flag for current category's success
+                            )
                             # Display a status spinner in the console during LLM generation
                             status_message = (
                                 f"Generating {category} for job {job.job_ulid}..."
@@ -452,6 +447,7 @@ class MetadataExtractor:
                                         logger.info(
                                             f"Successfully generated and saved '{category}' for Job ID: {self.job_id}."
                                         )
+                                        category_filled_this_attempt = True
                                     else:
                                         # Handle cases where the Gemini LLM call returns an error
                                         error_message = gemini_result.error_message
@@ -476,16 +472,13 @@ class MetadataExtractor:
                                         logger.error(
                                             f"\n**********\nError with Gemini call for category '{category}'.\nError type: {gemini_result.error_type}\nError Message: {error_message}\nExit Code: {gemini_result.exit_code}\n*********\n"
                                         )
-                                        # If a non-quota LLM error occurs, we break to avoid further issues for this job
-                                        # This means `all_categories_filled` will remain False
                                         logger.debug(
                                             f"Raw Gemini error output: {gemini_result.output}"
                                         )
                                         self.console.print(
                                             f"[red]  Gemini call for '{category}' failed. See logs for raw output and details.[/red]"
                                         )
-                                        logging.shutdown()  # This flushes and closes all handlers
-                                        break
+                                        # Do not mark as all_categories_successfully_processed if this fails
                                 except Exception:
                                     # Catch any unexpected errors during the generation process for a category
                                     logger.error(
@@ -498,7 +491,6 @@ class MetadataExtractor:
                                     logger.debug(
                                         f"Raw Gemini error output: {gemini_result.output}"
                                     )
-                                    logging.shutdown()  # This flushes and closes all handlers
                                     # Mark the category with an error placeholder and save, so it's not re-attempted immediately
                                     metadata[category] = (
                                         f"[ERROR] - See logs"  # Mark as error
@@ -506,7 +498,13 @@ class MetadataExtractor:
                                     self._save_metadata_json(
                                         metadata, metadata_path
                                     )  # Save error state
-                                    all_categories_filled = False  # This category was not successfully filled
+                                    # Do not mark as all_categories_successfully_processed if this fails
+
+                            if not category_filled_this_attempt:
+                                all_categories_successfully_processed = False
+                                # If any category fails generation, we break from the loop for the current job
+                                # to prevent further issues and allow the user to address the problem.
+                                break  # Break if a category was not filled this attempt
                         else:
                             # This case indicates a developer error: a category is in config but no _generate_ method exists
                             logger.error(
@@ -517,10 +515,13 @@ class MetadataExtractor:
                             self.console.print(
                                 f"[red]  Error: Generation method for {category} not found. Check logs and configuration.[/red]"
                             )
-                            all_categories_filled = False  # Cannot fill this category
+                            all_categories_successfully_processed = (
+                                False  # Cannot fill this category
+                            )
+                            break  # Break if a generation method is missing for a category
 
                 # After attempting to fill all categories, update the database stage status
-                if all_categories_filled:
+                if all_categories_successfully_processed:
                     # Find the 'extract_metadata' stage record for this job
                     metadata_stage = (
                         session.query(JobStage)

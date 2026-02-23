@@ -65,3 +65,13 @@ OVERALL ASSESSMENT:
 3. If more than 50% of categories are downgraded during internal validation, mark the audit as **Unstable — Low Confidence**.  
 4. The output must be **concise, factual, and actionable** — no subjective language, no opinions, no extraneous commentary.  
 5. Include all required fields; do not skip categories even if there are no issues. Use “None found” where applicable.
+
+Original Edited Sermon:
+<<<<<<<<<<<<
+{ORIGINAL_SERMON}
+>>>>>>>>>>>>
+
+Final Polished Sermon:
+<<<<<<<<<<<<
+{POLISHED_SERMON}
+>>>>>>>>>>>>

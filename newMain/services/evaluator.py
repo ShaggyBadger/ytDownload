@@ -108,7 +108,9 @@ class Evaluator:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.ollama_client = OllamaClient(model="llama3.2:3b", temperature=0.2)
-        self.ollama_client_big = OllamaClient(model="mistral-nemo:latest", temperature=0.2)
+        self.ollama_client_big = OllamaClient(
+            model="mistral-nemo:latest", temperature=0.2
+        )
         self.rating_threshold = 8
 
     def run_evaluation(self, job_dir: Path):
@@ -393,10 +395,10 @@ class Evaluator:
     def _update_paragraph_status(self, paragraph: dict, eval_data: dict):
         """
         Analyzes the LLM's evaluation data and updates the paragraph's status.
-        
+
         This method is the final arbiter of whether a paragraph 'passes' or 'fails'.
-        It incorporates both the LLM's numeric rating and a hard-coded heuristic 
-        check for illegal formatting characters (asterisks) often introduced 
+        It incorporates both the LLM's numeric rating and a hard-coded heuristic
+        check for illegal formatting characters (asterisks) often introduced
         as bolding or placeholders by the model.
 
         Args:
@@ -408,14 +410,18 @@ class Evaluator:
         edited_text = paragraph.get("edited", "")
 
         # --- HEURISTIC CHECK: Asterisks ---
-        # LLMs occasionally include asterisks (e.g., **word**) for emphasis or as 
-        # placeholders. Our downstream pipeline requires clean text, so we 
+        # LLMs occasionally include asterisks (e.g., **word**) for emphasis or as
+        # placeholders. Our downstream pipeline requires clean text, so we
         # auto-fail any edit containing these characters.
         if "*" in edited_text:
-            self.logger.warning("Asterisks detected in edited text. Auto-failing paragraph.")
+            self.logger.warning(
+                "Asterisks detected in edited text. Auto-failing paragraph."
+            )
             paragraph["evaluation_status"] = "failed"
             # Append the auto-fail reason to any existing critique from the model
-            paragraph["critique"] = (critique or "") + "\n[AUTO-FAIL: Asterisks detected in text.]"
+            paragraph["critique"] = (
+                critique or ""
+            ) + "\n[AUTO-FAIL: Asterisks detected in text.]"
             paragraph["rating"] = rating
             return
 
@@ -614,9 +620,12 @@ class UserInteractiveEvaluator:
                 f"Auto-passing enabled for ratings >= {self.user_review_threshold}."
             )
         else:
-            self.console.print("[yellow]Auto-passing disabled. All paragraphs require manual review.[/yellow]")
-            self.logger.info("Auto-passing disabled. All paragraphs require manual review.")
-
+            self.console.print(
+                "[yellow]Auto-passing disabled. All paragraphs require manual review.[/yellow]"
+            )
+            self.logger.info(
+                "Auto-passing disabled. All paragraphs require manual review."
+            )
 
     def _get_eligible_jobs_for_user_evaluation(self) -> list[Path]:
         """
@@ -663,7 +672,9 @@ class UserInteractiveEvaluator:
         )
         current_rating = paragraph_data.get("rating", "N/A")
 
-        self.console.print(f"\n[bold magenta]Job: {job_dir.name} - Paragraph: {index + 1}[/bold magenta]")
+        self.console.print(
+            f"\n[bold magenta]Job: {job_dir.name} - Paragraph: {index + 1}[/bold magenta]"
+        )
         self.console.print(
             Panel(
                 f"[bold yellow]Original:[/bold yellow]\n{original}\n\n"
@@ -741,14 +752,18 @@ class UserInteractiveEvaluator:
         paragraph_data["full_evaluation_output"] = llm_full_output
 
         # --- ASTERISK AUTO-FAIL CHECK ---
-        # Before moving to the user or auto-pass check, we verify that the text 
-        # is free from formatting artifacts (*). This ensures the final output 
+        # Before moving to the user or auto-pass check, we verify that the text
+        # is free from formatting artifacts (*). This ensures the final output
         # is clean and ready for publication without manual asterisk stripping.
         if "*" in edited:
             # Inform the user on-screen that this was an automatic decision
-            self.console.print("[bold red]Asterisks detected in text! Auto-failing this paragraph.[/bold red]")
+            self.console.print(
+                "[bold red]Asterisks detected in text! Auto-failing this paragraph.[/bold red]"
+            )
             # Append this reason to the critique so it's documented in paragraphs.json
-            paragraph_data["critique"] = (new_critique or "") + "\n[AUTO-FAIL: Asterisks detected in text.]"
+            paragraph_data["critique"] = (
+                new_critique or ""
+            ) + "\n[AUTO-FAIL: Asterisks detected in text.]"
             # Return "n" to simulate a rejection without further prompting
             return "n"
 

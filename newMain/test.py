@@ -6,6 +6,19 @@ from transformers import AutoTokenizer
 tokenizer = AutoTokenizer.from_pretrained(
     "mistralai/Mistral-Nemo-Instruct-2407")
 
+tone = """
+The preacher delivers this sermon in a passionate, urgent, and contemplative tone, emphasizing God's presence and promises of salvation to broken and sinful individuals, inviting listeners to respond in faith by stepping onto the ladder of Jesus Christ.
+"""
+thesis = """
+God's presence is the greatest blessing He can offer to humanity, and it is only through faith in Jesus Christ that we can experience this presence, which bridges the gap between a holy God and broken, sinful humanity.
+"""
+summary = """
+The sermon, titled \"When God Meets Us in Our Mess, Part Two,\" recounts Jacob's flight from Esau after his deception, emphasizing the consequences of his actions and God's allowance for individuals to experience the results of their sin as a path to repentance. In his desperate state, Jacob dreams of a ladder connecting heaven and earth, where God appears to him, reiterating the Abrahamic covenant and promising His unfailing presence. This encounter leads to Jacob's vow of faith, signifying a turning point. The sermon then interprets Jacob's ladder dream through John 1, where Jesus declares Himself to be the fulfillment of this vision, the sole bridge and mediator connecting a holy God and sinful humanity. The concluding application underscores that God meets broken individuals in their struggles, offering His presence and promises through Jesus Christ.
+"""
+outline = """
+I. Introduction\n    A. Brief welcome and introduction\n    B. Introduction to Genesis 27-28\n\nII. The Journey to Brokenness\n    A. Jacob's deception and sin\n        1. Deceived his father, Isac\n        2. Lied to his blind father to steal the blessing\n    B. Consequences of sin\n        1. Rebekah's scheming and plotting\n        2. Jacob's exile and 20-year absence from home\n\nIII. God's Presence in Brokenness\n    A. Jacob's dream and encounter with God\n        1. The ladder connecting heaven and earth\n        2. Angels ascending and descending on the ladder\n    B. God's promise to Jacob\n        1. Land, descendants, and blessings for his family\n        2. Presence of God in his life\n\nIV. Jesus as the Bridge (John 1:43)\n    A. Jesus' calling of Philip and Nathanael\n        1. Nathanael's skepticism and Jesus' response\n    B. Jesus as the ladder between God and humanity\n        1. One way to heaven, one mediator between God and man\n\nV. Application\n    A. God meets broken people where they are\n        1. No need for us to clean up ourselves before receiving God's presence\n    B. God gives his presence and promises\n        1. Exceedingly great and precious promises of forgiveness and justification\n        2. Presence of God in believers' lives\n\nVI. Invitation\n    A. Response in faith to the gospel message\n        1. Recognizing the ladder has come down from heaven\n        2. Stepping on the ladder by faith
+"""
+
 og_transcript = """
 Oh, you're good.
 All right.
@@ -931,79 +944,49 @@ This is not an argument restructuring task.
 
 Your job is to:
 
-Remove any remaining transcription artifacts.
-
+Remove:
+Any remaining transcription artifacts.
 Filler phrases
-
 Accidental repetition
-
 Broken or looping sentences
-
 Incomplete thoughts
-
 AI-induced rhythm glitches
-
 Redundant phrasing that weakens clarity
-
 Smooth awkward wording ONLY where clarity demands it.
 
 Preserve:
-
 The preacher’s voice
-
 The preacher’s tone
-
 The theology
-
 The argument structure
-
 The rhetorical intensity
-
 All Scripture references exactly as written
+Maintain spoken-word cadence suitable for sermon publication.
 
 Do NOT:
-
 Add new theological insight
-
 Expand applications
-
 Shorten for efficiency
-
 Modernize language unless it corrects a clear error
-
 Improve transitions unless they are broken
-
 Replace strong language with softer phrasing
-
 Change the thesis
-
 Change the emotional weight
-
-Maintain spoken-word cadence suitable for sermon publication.
 
 OUTPUT REQUIREMENTS
 
 Return:
-
-SECTION 1 — CLEANED SERMON
 Provide the full revised sermon in its entirety.
 
-SECTION 2 — EDITORIAL REPORT
-Provide a brief report including:
-
-Were any loops or structural oddities found?
-
-Were any theological ambiguities detected?
-
-Did you make minor smoothing changes or significant changes?
-
-Is this manuscript publication-ready? (Yes / Minor Revisions Recommended / Needs Substantial Revision)
-
-Be concise but precise in the report.
+Extra context:
+Sermon Tone: {TONE}
+Sermon Summary: {SUMMARY}
+Sermon Thesis: {THESIS}
+Sermon Outline: {OUTLINE}
 
 SERMON TEXT BEGINS BELOW:
 <<<
-[PASTE FULL SERMON HERE]
+{TEXT_TO_POLISH}
 """
 
 sermon = """
@@ -1099,14 +1082,578 @@ The Lord Jesus Christ, as He extends His invitation through the song of His peop
 And if you would like someone to come and pray for you, pray with you, please approach me or a friend here. Come to the one who has come down to you, Jesus Christ, ready to lift you up in your time of need.
 """
 
-prompt = prompt.format(SERMON=sermon)
+polished_sermon = """
+When God Meets Us in Our Mess, Part Two
 
-tokens = tokenizer.encode(prompt)
+15 February, 2026
+Thesis: God's presence is the greatest blessing He can offer to humanity, and it is only through faith in Jesus Christ that we can experience this presence, which bridges the gap between a holy God and broken, sinful humanity.
+
+Summary: The sermon, titled "When God Meets Us in Our Mess, Part Two," recounts Jacob's flight from Esau after his deception, emphasizing the consequences of his actions and God's allowance for individuals to experience the results of their sin as a path to repentance. In his desperate state, Jacob dreams of a ladder connecting heaven and earth, where God appears to him, reiterating the Abrahamic covenant and promising His unfailing presence. This encounter leads to Jacob's vow of faith, signifying a turning point. The sermon then interprets Jacob's ladder dream through John 1, where Jesus declares Himself to be the fulfillment of this vision, the sole bridge and mediator connecting a holy God and sinful humanity. The concluding application underscores that God meets broken individuals in their struggles, offering His presence and promises through Jesus Christ.
+
+Oh, you are good. Indeed, alright. Well, thank you all for leading us in worship this morning. It's always a blessing to have you with us. See, this morning, let us look into the book of Genesis, chapter 27.
+
+Did y'all enjoy the worship led by the Bruner family this morning? I sure did, as they brought a powerful reminder of God's presence with us today. It was truly a blessing to have them here, and their ministry serves as a testament to the promises of salvation that God extends to broken and sinful individuals like you and me.
+
+Now, let's turn our attention to God's Word this morning, as we look into Genesis, chapter 27.
+
+We shall resume where we left off last week. Now, before we proceed, let me remind you that we dismissed our children for Children's Church today. I apologize if I overlooked mentioning that earlier.
+
+Turning to Genesis chapter 28 this morning, we'll begin in verse 47.
+
+And if you remember, this is part two of 'When God Meets Us in Our Mess', part two. And this is when God meets Jacob at his lowest point in his life so far. Let's pick up here in verse 41 of Genesis 27.
+
+The Bible says, "So Esau hated Jacob because of the blessing with which his father blessed him. And Esau said in his heart, 'The days of mourning for my father are near; then you will go away that I may kill you.'" Now Rebekah had told her older son Esau, saying: "Surely your brother Jacob has taken a blessing from me."
+
+Therefore she sent and called Jacob, her younger son, and said to him: "Surely your brother Esau comforts himself concerning you by intending to kill you. Now therefore, my son, obey my voice: Arise, flee to my brother Laban in Haran and stay with him a few days until your brother's fury turns away from you, until he forgets what you have done to him."
+
+Then I will send and bring you from there. Why should I bereaved also of you both in one day?
+
+Rebekah said to Isaac: "I am weary of my life because of the daughters of Heth; if Jacob takes a wife of the daughters of Heth like these who are the daughters of the land, what god will be to me?"
+
+Then Isaac called Jacob and blessed him and charged him, saying to him: "You shall not take a wife from the daughters of Canaan. Arise, go to Padan Aram to the house of Bethuel, your mother's father, and take yourself a wife from there of the daughters of Laban, your mother's brother.
+
+And may God Almighty bless you and make you fruitful and multiply you, that you may be an assembly of peoples, and give you the blessing of Abraham, to you and your descendants with you, that you may inherit the land in which you are a stranger, which God gave to Abraham."
+
+So Isaac sent Jacob away, and he went to Padan Aram, to Laban, the son of Bethuel the Syrian, the brother of Rebekah, the mother of Jacob and Esau.
+
+Let us go now in prayer. Father, we thank You for Your word. Lord, open our eyes that we may see wonderful things from Your law. In Jesus' name, amen.
+
+Alright, guys. When God meets us in our mess, part two.
+
+Lord, may your kingdom come. May your will be done on earth as it is in heaven, especially within our church and lives. Let us live under the crown of King Jesus.
+
+Lord, we pray that if anyone is lost this morning, they would find the gospel irresistible, sweet, and life-changing. Lord, soften hardened hearts, comfort broken ones, warn the idle, and encourage the weak. Edify your people, beautify your bride through the washing of the water of the word. Speak through me, Jesus, make your presence known and felt in our midst today.
+
+Alright, guys. When God meets us in our mess, part two.
+
+Now, as we continue in our study of this family, let us remember that even amidst their dysfunction, God is present and His purposes are never thwarted. Last week, we examined one of the most troubled families in Scripture, a family marked by favoritism, deception, false repentance, brotherly hatred, and even a murder plot.
+
+We saw Isaac favoring Esau and Rebekah favoring Jacob, witnessed Jacob's cunning deception to steal his brother's blessing, and observed Esau's tears of regret rather than godly sorrow. It was indeed messy, but we had to confront the depths of their family dysfunction.
+
+We ended with the truth that God's sovereign purposes are never thwarted by our sin, and He chose Jacob to carry on the covenant line not because of Jacob's worthiness, but because of His faithfulness to His promises.
+
+And the good news is we will one day see reconciliation take place. Oh, but not yet. Not yet.
+
+We have many, many years until we see that. In fact, we're going to see 20 years take place in Jacob's life before he is one day reconciled to his brother Esau. But you didn't see that coming.
+
+But I get ahead of myself, right? For now, we see that Jacob has the blessing. But he's lost everything else. He flees for his life from a brother who wants him dead. He leaves his parents. He leaves his home. He leaves everything comfortable, everything familiar.
+
+And we'll see that God takes him on a journey to break him and then to rebuild him into the man God has called him to be.
+
+Now, this morning, you may be asking, "Is there any hope for me? Can God meet me in the midst of my own brokenness and despair?"
+
+Can God help me deal with the consequences of my own sinful actions?" Because that's exactly what Jacob is dealing with this morning. This partly his fault. But yet, we see that God is going to meet him in his lowest point.
+
+So this morning, if you feel broken and desperate and alone, if you're wondering, "Has God given up on me? Can God meet me where I am?"
+
+Well, here's the good news: God is going to meet us in our brokenness. He's not waiting for us to have it all together. He meets us right where we are.
+
+So let's first look at Jacob's journey into brokenness. In chapter 28, Isaac blesses Jacob properly this time, but then sends him away. Yet again, Rebekah eavesdrops, overhearing Esau's promise to kill Jacob. She then helps Jacob flee to her family in Padan Aram, where he must stay until Esau's anger subsides and find a wife among his mother's people.
+
+Unknowingly, Rebekah's scheming sends Jacob away for 20 years; she'll never see him again, losing both sons that day—her relationship with Esau is also severed as he moves to the mountains of Seir. Despite this, God promises to meet Jacob in his lowest point, offering hope even amidst sin's consequences.
+
+She would never see his face again. Friends, that's the far-reaching consequences of sin, isn't it? It takes us farther than we want to go, keeping us longer than we want to stay.
+
+This is why, in our brokenness and sin, God's presence and promises of salvation are all the more precious. They offer a way back, a ladder to climb out of the pit we've dug for ourselves through Jacob's example.
+
+And friends, we will never get ahead in life by living contrary to God's design. Never. Just look at Jacob, he has the blessing but he's leaving everything else. He's fleeing his brother's murderous rage, leaving his mother who loves him so much, heading to an unknown land.
+
+He should think, "I've won, I've got what I always wanted," but Jacob never felt more like a loser in his life. But here's where God steps in. He's leading Jacob to the place where he will learn his lesson because, as Galatians 6 tells us, "Do not be deceived: God is not mocked. Whatever a man sows, that also he will reap."
+
+Ultimately, Jacob is going to Laban, Rebekah's brother, to be his uncle, and there he will reap what he has sowed. He deceived his father, and now he will be deceived multiple times by his father-in-law.
+
+It's a harsh reality, but it's God's way of teaching Jacob—and us—that our actions have consequences. So let's learn from Jacob's mistakes and turn to Jesus, the only one who can save us from ourselves.
+
+"And he's going to serve 14 years for two wives, then another six. He'll face an even greater manipulator than himself."
+
+Galatians 6 says, 'Don't be deceived; God is not mocked.' Whatever a man sows, that shall he also reap. Jacob deceived his father, so now he will be deceived multiple times by his father-in-law.
+
+Remember how Jacob deceived his father? With goat skins, right? Well, years later, when Jacob has sons of his own, they use goat's blood on their brother Joseph's clothes, deceiving him into believing Joseph is dead.
+
+So we see a full circle here - deception by goats and clothing. Jacob truly reaps what he sowed. But God isn't out to destroy us with our sins; He breaks us, humbles us, and brings us to repentance so we can find hope in the gospel.
+
+Now, Jacob is at his lowest point, as verse 10 tells us.
+
+And now, Jacob leaves Beer-sheba, heading towards Haran. As night falls, he stops at a place, uses a stone for a pillow, and sleeps there. He must've been exhausted.
+
+That night, he dreams of a ladder reaching from earth to heaven, with angels ascending and descending on it. Quite the dream, isn't it? Let's pause here for a moment.
+
+And now Jacob went out from Beersheba, weary from his journey, and headed toward Haran. As the sun began to set, he came upon a certain place where he decided to spend the night. Exhausted, he took one of the stones there and placed it under his head as a makeshift pillow.
+
+Lying down in that spot, he must have been incredibly tired, for he soon drifted off into a deep sleep. Little did he know, this was no ordinary night. For as he slept, he began to dream a most remarkable dream.
+
+Behold, there before him stood a ladder, its top reaching up to the very heavens itself. And what do you suppose he saw? Angels of God ascending and descending upon it, going about their heavenly business. What a sight to behold! This was no mere figment of his imagination; this was a glimpse into the very presence of God, a promise of His constant companionship and care.
+
+Let's consider Jacob now, God's chosen but wayward son, once soft and smooth in his mother's garden, now a fugitive in the wilderness. This is not his territory; this is where hunters go, not gardeners. He's on a 50-mile journey to Padan Aram, approximately halfway through, perhaps on his second night.
+
+Exhausted, he comes to a certain place, later known as Luz, or Bethel, where his grandfather Abraham once set up an altar. Jacob takes a stone from the ground and uses it as a pillow beneath his head. As he closes his eyes, he begins to dream. Behold, a ladder stands firmly on the earth, its top reaching up to heaven.
+
+Angels of God ascend and descend upon it, their wings stirring the air with a rustling like whispers of divine conversation. This is no ordinary dream; this is a vision of God's presence and promise, a lifeline stretching from Jacob's desperate circumstance to the very throne of heaven.
+
+And we'll later know that place is called Luz. Luz simply means 'almond tree'. Little does he know that his grandfather, Abraham, had been to this very spot years before, setting up an altar here. It would later be known as Bethel, the House of God.
+
+Abraham had stood right where Jacob now lies, encountering God's presence in a profound way. Yet, Jacob seems unaware of this history, perhaps even ignorant of its significance.
+
+Little does he know that God is about to meet him here at his lowest and most desperate moment. Exhausted, he takes a stone, places it under his head as a makeshift pillow, and prepares to sleep under the vast, indifferent heavens. But unbeknownst to him, he's not alone.
+
+The God who walked with Abraham is about to reveal Himself in the darkness, offering Jacob hope amidst his despair.
+
+Now picture this. He's alone, without the love of his mother to comfort him, with the hatred of a brother who wants him dead, and the disgrace of a deceived father.
+
+Back home, he had riches, food, anything he wanted. Now, he only has what he can carry. He's made mistakes, exhausted, desperate. He's stolen covenant promises, yet has nothing to show for them despite his former wealth and status. Nothing at all.
+
+He's a fugitive, with the heavens as his canopy and the stars as his only source of light. Lying on the dark, cold, damp ground, no doubt he's thinking, "Lord, how did I get here? Why did I do this?"
+
+Using a stone for a pillow, God is present even in his despair, offering promises of salvation to this broken man.
+
+He's in an impossible situation, literally and figuratively. He's lost everything—his wealth, his family, even his sense of self-worth.
+
+He's a man who's betrayed his own brother, stolen his father's blessing, and now lies alone on the cold ground, staring up at the stars he once thought were promised to him. He has no impressive spiritual resume, only a heart heavy with guilt and deceit.
+
+He's a lying manipulator, a deceiver who's thrown away everything for a fleeting moment of power. Now, he's left with nothing but regret and desperation, wondering how he could have fallen so far from grace.
+
+And no doubt, he's just lying there on his back. The stars above twinkle like ice chips in a broken mirror, mocking him with their countless numbers while he has nothing.
+
+He's looking up at them, probably heard his dad talk about God's promise to his grandfather, how he'd have descendants as many as the stars in the sky. But now, he's left with an empty chest, his heart heavy with regret.
+
+"What have I done?" he thinks, his breath coming in ragged gasps, like a man who's been running for his life from his own mistakes.
+
+And that, right then, is when God shows up. Maybe you've had some of those moments too, flat on your back, wondering how you ended up there, what you've done to deserve it. That's when God chooses to reveal Himself, isn't He?
+
+Now we look.
+
+In verse 10 through 15, God appears to him in a dream. Verse 12, he dreams a vivid dream. And there it stands, the ladder, an awe-inspiring sight connecting heaven and earth. Angels are ascending and descending upon it, their wings stirring the air with whispers of divine activity.
+
+Now, what is this ladder? Literally, in the Hebrew, it's not just any ladder; it's sulam, a word so rare it appears only once in the entire Old Testament. It's not merely a ladder, but a stairway, a bridge spanning the chasm between a holy God and a desperate, sinful man like Jacob.
+
+The angels ascending and descending upon it speak of God's constant presence, His promises active even now, even here.
+
+So, what does this mean for Jacob? For us? It means God is saying, "Jacob, I am still with you. My angels are here to protect you, to guide you. Even at your lowest point, in your despair and desperation, I am with you."
+
+It's the opposite of the Tower of Babel, where man reaches for the heavens in pride. Here, God reaches down to Jacob in grace, bridging the gap between them with a ladder of love.
+
+It means God is saying, Jacob, I'm still with you. My angels are here to protect you. I'm giving you my presence and I'm giving you my promises. You may feel unworthy, like a scoundrel, but remember, none of us deserve such grace.
+
+Yet, even at your lowest point, I am with you. This vision is the antithesis of the Tower of Babel in chapter 1. There, humanity tried to reach God; here, God reaches out to Jacob, bridging the gap between a holy God and sinful man.
+
+I demand your attention: God is calling out to you today, offering his presence and promises, just as he did to Jacob.
+
+Didn't really work in chapter 1 either, did it? But we notice that when Jacob cannot make his way to God, what does God do? God makes His way to him. He cannot go up, so God must come down.
+
+In verse 13, behold, the Lord stood above it, and the Lord says, "I am the Lord, Yahweh." That's His covenant name. "I am the God of Abraham, your father, and the God of Isaac."
+
+Now, I've learned this fascinating thing. It says, "the Lord stood above it," but in Hebrew, it can also mean "the Lord stood beside it." In other words, God was at Jacob's side as he lay on the ground, sleeping on a pillow.
+
+God is with him. God has come to earth, as it were.
+
+How awesome is that? Some of you are starting to make connections. Some of you see where this is going. I love it.
+
+Man, I love it! When Jacob can't reach God, God comes down to him, revealing himself as the covenant-keeping, promise-keeping God.
+
+He begins to bless Jacob, saying, "The land on which you lie, I will give to you and your offspring. Your offspring shall be like the dust of the earth, spreading abroad in all directions. In you and your offspring, the families of the earth shall be blessed."
+
+Then he promises, "I am with you; I will keep you wherever you go and bring you back to this land. For I will not leave you until I have done what I promised."
+
+This is the Abrahamic covenant, reiterated now to Jacob: a people, a place, and a promise.
+
+But the most precious gift God gives is his presence. He assures Jacob, "I am with you," echoing the writer of Hebrews' words that he will never leave us or forsake us.
+
+Despite Jacob's struggles, God blesses him not because of his worthiness but because God is faithful to His promises.
+
+And what's more, God gives Jacob the greatest blessing: himself. He says, "Jacob, I am with you; my presence is the ultimate blessing."
+
+Believer, this promise is for you too—God will never leave or forsake you, even at your lowest.
+
+As Jacob awakens, he realizes, "Surely the Lord is in this place, and I did not know it." He thought he was alone, but God was with him all along.
+
+And then he gives him the greatest blessing of all. Not his promises, but his presence. He says, "I am with you, Jacob."
+
+All your life, you thought you needed things to be successful. You thought you needed me, material blessings and possessions, and you were willing to do anything to get them.
+
+But Jacob, the greatest blessing I can give you is myself. The greatest blessing anyone can receive is the presence of God with them.
+
+And God is saying, "Jacob, I will never leave you. I will never forsake you. I will make sure all of my promises come true."
+
+Believer, that is a promise for you as well. He will finish what he started. He will never leave you or forsake you, even at your lowest.
+
+Jacob's response in verse 16: "Jacob awoke from his sleep and said, 'Surely the Lord, Jehovah, is in this place,' and I did not know it."
+
+He thought he'd forfeited God's blessing through his deception. "Man," he thinks, "it can't get any worse. Surely God's going to abandon me now. I've messed up, lost everything."
+
+But God says, "Oh no, boy. I'm still with you." Praise God!
+
+Friends, how many of us have felt that way? We think, "Surely God can't be with me now. I've blown it too many times." But that's when God shows up, isn't It?
+
+Now we look.
+
+In verse 17, Jacob exclaims, "How awesome is this place!" (Verse 17). This, he realized, was none other than the house of God, the very gate of heaven. And so, he took the stone he'd used as a pillow and set it up as a pillar, pouring oil on it.
+
+Now, that's not just a play on words, okay? I know some of you old folks might say 'pillar' for 'pillow', but this morning, we're awake and alert!
+
+Y'all laugh. That's a joke, right? It wasn't in my notes, I promise. But you know what's not a joke? The fact that Jesus Christ is the way we experience God's presence today.
+
+Just like Jacob made his pillow into a pillar to remember God's presence, we can make Jesus our foundation, our memorial of His presence in our lives.
+
+And just as Jacob poured oil on his pillar and named it Bethel, meaning "house of God," we too can invite Him into our hearts and lives.
+
+Now, let's talk about what that means for us today...
+
+The house of God, the gateway to heaven, is indeed the gateway to his new life. And God, through it all, will keep His promises; He will bring Jacob back to the land.
+
+Now, we could end here, and that would be a good story of God keeping his promises, right? Of God showing grace to broken, undeserved people.
+
+But oh man, it gets so much better.
+
+Where do we see Jesus in this passage? Because if we don't see Jesus, there is no gospel message. And I want you to do this with me. Turn in your Bibles to the book of John, chapter 1, beginning in verse 43.
+
+I'll tell you what, I've been so excited all week to bring this out. It's like, man, this is awesome. This might be new information for some of you; some of you have probably heard it before. But, man, it's so good.
+
+John, chapter 1, beginning in verse 43. I'll give you a second to get there because you all need to track with this.
+
+Now, this early in Jesus' ministry, as He sets out for Galilee, He finds Philip and says, "Follow me."
+
+This is the calling of the disciple Philip. Notably, Philip hails from Bethsaida, the city of Andrew and Peter, indicating that Jesus is indeed calling some of His first disciples.
+
+And true to form, Philip begins telling others about Jesus, seeking to make more disciples. He finds his friend Nathanael and shares, "We have found him of whom Moses in the law and also the prophets wrote, Jesus of Nazareth, son of Joseph."
+
+Yet Nathanael responds skeptically, "Can anything good come out of Nazareth?" Philip's reply is urgent and passionate: "Come and see for yourself, old friend. You don't even know!"
+
+As Nathanael approaches, Jesus sees him coming and exclaims, "Behold, an Israelite indeed, in whom is no deceit!"
+
+Here, Jesus underscores the purity and sincerity of Nathanael's heart, a testament to God's presence and favor upon him.
+
+This moment, dear congregation, is a vivid illustration of our thesis: there is no greater blessing than experiencing God's personal, intimate presence, as seen in Jesus' immediate recognition and affirmation of Nathanael.
+
+So, let us strive to cultivate such sincerity and openness before the Lord, that we too may experience His divine favor and blessing.
+
+Nathanael was astonished. "How do you know me?" he asked, his voice filled with wonder and disbelief.
+
+And Jesus answered him, not with a simple reply, but with a profound revelation: "Before Philip even called you, while you were sitting under the fig tree, I saw you."
+
+It's as if I stood beside you in that very moment." Nathanael's astonishment deepened; it was not just surprise anymore, but a sense of awe and reverence.
+
+He addressed Jesus with newfound respect, "Rabbi, you are the Son of God! You are the King of Israel!"
+
+Jesus' response was not one of boasting, but of invitation: "Because I said to you, 'I saw you under the fig tree,' do you believe? You will see much greater things than these."
+
+And then, with a tone that was both assuring and awe-inspiring, Jesus declared, "Most assuredly, I say to you, hereafter you shall see heaven open and the angels of God ascending and descending on the Son of Man."
+
+Nathanael could hardly contain his excitement. He felt a profound sense of connection to something far greater than himself.
+
+And with a heart full of joy and anticipation, he exclaimed, "Amen! And hallelujah!"
+
+I know it might be sleepy and rainy outside, but come on, somebody, let's not miss this moment. Who is that ladder? Let me rewind for you.
+
+Thousands of years ago, Jacob had his dream under a fig tree, and now here we are with Nathanael, sitting under another fig tree, the customary spot for reading God's law and meditating.
+
+Imagine the scene: the rustling leaves, the scent of damp earth after rain, Nathanael's eyes scanning the familiar words of Genesis 28. He's probably wondering, "How can I know that God is with me here in this backwater town?"
+
+Enter Jesus, called by Philip, ready to change everything.
+
+And then Philip brings Jesus and introduces him as Jesus of Nazareth, the one that the Scriptures have prophesied about.
+
+And Nathanael says, "Nazareth? Can anything good come out of Nazareth?" And Jesus, with urgency in his voice, responds, "You are a son of Israel, remember?
+
+The name later given to Jacob, the man here in Genesis 28. You're a son of Israel, not like your father Israel who was a deceiver, a conniver, a manipulator.
+
+No, you are a man looking for truth." Jesus' tone is passionate as he continues, "And here I am, standing before you, the ladder between heaven and earth that you've been reading about."
+
+You're questioning how God's presence could possibly be with you, Nathanael. We can only imagine all these thoughts racing through your mind.
+
+And then, you ask Jesus, "How do you know me? We've never met." Jesus responds with urgency, "Listen, before Philip even called you, I saw you under the fig tree.
+
+I knew your heart's desire, Nathanael. But if you refuse to believe, what will become of you?"
+
+And by the way, I know what you were reading. Why? Because just as God was beside Jacob, God was with Nathanael.
+
+Jesus was right there with him, present in his life even before Nathanael knew it. This is how Jesus shows us that he is indeed the ladder between God and man, the one who connects a holy God in heaven with sinful men on earth, just as Jacob saw in his dream.
+
+Nathanael becomes a believer because of this personal, intimate presence of God in his life.
+
+He confesses, "You are the Christ, the Son of the living God." You're not just a rabbi or a god teacher or a god man. You are the Messiah.
+
+And Jesus says, "You haven't seen anything yet. One day you'll see the heavens open and you'll see the angels of God ascending and descending on the Son of Man."
+
+What is Jesus saying? He's saying, "I am the ladder that Jacob dreamed about. Remember, this was a vision given to him by God in his dream.
+
+I am that ladder that connects a holy God in heaven with sinful man on earth. I am the bridge between God and man. And the angels of God ascend and descend on me."
+
+What does that indicate? I believe it indicates his heavenly origin, he's the Son of God from heaven, but also pictures his return in glory when he returns with the angels in power.
+
+So let's discuss how Jesus' divine nature bridges the gap between God and humanity, fulfilling Jacob's ladder vision as a preview of his mediatory role, as seen in 1 Timothy 2:5.
+
+How Jesus is the bridge between God and humanity, as depicted in Jacob's ladder dream. It was merely a preview, a promise of what God would accomplish through His Son.
+
+In 1 Timothy 2:5, we learn that "there is one mediator between God and men, the man Christ Jesus."
+
+Fully divine in essence yet truly human without sin, Jesus spans the chasm created by sin, reconciling us to God. He is our go-between, our mediator, bridging the gap that religion cannot traverse.
+
+He is the go-between. He is the mediator. He is the one who reconciles us to God.
+
+Friends, he does what religion cannot do. So many people are attempting to climb their way to God with all their might, in their own efforts, right?
+
+They're building their own towers of Babel, trying to be god enough. Trying to clean themselves up, trying to climb the ladder with all their might. And then, their foot slips.
+
+They fall back into sin, toppling all the way down to where they started. It's just exhausting. You can't make your way up to God on your own strength.
+
+But God does for us what we cannot do for ourselves. He comes down to meet us, as Jesus did with Jacob, bridging the gap between us and Himself in love.
+
+When we can't reach him, he comes down to us, right? And all of us are like Jacob. We're deceptive, self-serving, unworthy of nothing but judgment.
+
+There's a gap between us and God that we can't cross on our own. But then Jesus comes down, bridging the chasm with his incarnation.
+
+He meets us in our mess, in our brokenness, while we're sleeping on rocks or stuck between a rock and a hard place. And he sends Emanuel, God with us, leaving the glories of heaven to walk the dust of the earth, to go to the cross, to be buried, and to rise again.
+
+As A.W. Pink puts it, "Right down where the fugitive lay, the ladder came, and right up to God Himself the ladder reached." Praise be to God!
+
+The Bible tells us in John 1, verse 14 that the Word became flesh and dwelt among us. God crossed the gap that we couldn't cross.
+
+He meets us in our messes, in our brokenness. While we are sleeping on rocks, while we are stuck between a rock and a hard place, God sends Emanuel—God with us.
+
+He leaves the glories of heaven to walk the dust of the earth, to go to the cross, to be buried, and to rise again. I love what A.W. Pink says: "Right down where the fugitive lay, the ladder came. And right up to God Himself the ladder reached." Praise God!
+
+For it is in Jesus Christ that we find the greatest blessing—the presence of God—and this can only be experienced through faith in Him.
+
+The cross wedged in the dirt of earth with Jesus, the Son of God hanging upon it in the expanse, bridges the gap between a holy God and sinful man. He is the ladder. He is the way.
+
+Jesus says in John 14:6, "I am the way, the truth, and the life. No one comes to the Father except through me."
+
+Indeed, Jesus is not merely a means to an end; he is the very way. Just as there is but one way to heaven, it's only one ladder. Right?
+
+It's only one bridge between a holy God and sinful man. Jesus Christ, the Son of God, is that bridge, just as He was the ladder in Jacob's dream.
+
+When we cross this bridge, we cross over from darkness to light, from death to life, from condemnation to justification. This crossing is not merely about transition but about encountering God's presence, His greatest blessing for us.
+
+From brokenness to healing. Remember what I said earlier, remember what Bethel means – it's the house of God. And who is Jesus but God with us?
+
+Even before his birth, it was prophesied that he would be named Emanuel, God with us, as Matthew 1:23 tells us. Friends, Jesus is the ultimate house of God, his presence among us.
+
+He came down to earth for this very purpose. And as believers, we are told in 1 Corinthians 3:16 that we are the temple of the Holy Spirit, and God dwells in us.
+
+So, we need not ask like Jacob did, "Is God in this place?" For if you are a believer, he is indeed in you, with you always. You are Bethel – the house of God.
+
+You have the greatest blessing imaginable living within you—the constant presence of God Himself. And if you are a believer, you need not question whether God is with you; He is indeed present, and His promise in Hebrews 13:5 assures us that "He will never leave you nor forsake you."
+
+Even when we find ourselves broken sinners, like Jacob on the run, God remains beside us. He is the Good Shepherd seeking the lost sheep, having not abandoned us to our sin or left us alone in our wilderness.
+
+Consider Jacob's plight—he was a lost sheep, yet here was God coming to his rescue as his shepherd, bestowing exceedingly great and precious promises upon him.
+
+The same holds true for us today; as a word of application, number one, God meets broken people where they are.
+
+He doesn't wait for us to clean up ourselves. To somehow stop doing this and stop doing that so we're presentable. No, he comes to fix us in our brokenness, right?
+
+Jacob was a mess, a liar, a deceiver, a manipulator—he's running from God with his life on the line.
+
+Maybe you've done all these things and worse, thinking it can't get any worse, that there's no way God could ever receive you. But friends, God has already made the way for you to be forgiven, to be received, to receive his salvation right now.
+
+You just need to repent of your sins and place your faith in Christ. Just step onto that ladder, and he'll take you the rest of the way up.
+
+Secondly, God gives us his presence and his promises. Yes, he gives us exceedingly great and precious promises, eternal promises. He promises us forgiveness and justification and a home in heaven.
+
+But the greatest promise is his presence. The promise that neither life nor death nor angels nor rulers nor things present nor things to come nor powers nor height nor depth nor anything in all creation.
+
+Nothing will be able to separate you from the love of God that is in Christ. God was with Jacob. God will be with you.
+
+Friends, will you respond in faith? Will you realize that the ladder has come down from heaven? He has reached out to you. Will you by faith step on this ladder?
+
+The Lord Jesus Christ, as He extends His invitation through the song of His people. Take a moment, I urge you, to reflect upon the message shared today.
+
+Let this be a time for prayer and contemplation in your heart.
+
+And if you would like someone to come and pray for you, pray with you, please approach me or a friend here. Come to the one who has come down to you, Jesus Christ, ready to lift you up in your time of need.
+"""
+
+fidelity_prompt = """
+You are performing a FINAL PUBLICATION AUDIT on a sermon manuscript. 
+
+Your job is to evaluate the **accuracy, readability, and editorial cleanliness** of the text. Do NOT evaluate theology, persuasion, or sermon effectiveness.
+
+You will internally assume **two personas**:
+
+**AGENT 1 — Primary Auditor**
+- Detect transcription artifacts:
+  - Filler words (“um,” “ah,” “you know”)  
+  - Repeated phrases or loops from the transcription process
+  - Misheard words, speech-to-text glitches
+- Verify **scripture integrity**:
+  - All referenced Bible verses must exist  
+  - Verses must relate logically to surrounding sermon text
+- Assess **structure, grammar, and flow**:
+  - Sentence clarity and grammatical correctness  
+  - Paragraph integrity (overly long or short paragraphs)  
+  - Run-on or fragmented sentences  
+  - Logical transitions and connectors between sections
+- Provide **quoted evidence** for every issue.  
+- Assign severity: Low, Moderate, High  
+  - Low = isolated instances  
+  - Moderate = recurring pattern (≥3 examples)  
+  - High = systemic or dense pattern
+
+**AGENT 2 — Adversarial Validator**
+- Review each claim from Agent 1  
+- Confirm quoted evidence supports severity  
+- Downgrade severity if insufficient examples  
+- Remove claims that rely on vague generalizations or speculation  
+- Reject any hallucinated scripture claims
+
+**OUTPUT FORMAT — FINAL VALIDATED REPORT ONLY** (no internal reasoning, no separate personas)
+
+FINAL AUDIT REPORT
+
+1. Transcription Artifacts:
+   - Severity:
+   - Quoted Excerpts / Evidence:
+   - Repeated Phrase Loops (if any):
+
+2. Scripture Integrity:
+   - Severity:
+   - Quoted Excerpts / Evidence:
+
+3. Structure, Grammar & Flow:
+   - Severity:
+   - Quoted Excerpts / Evidence:
+   - Paragraph Integrity Issues (if any):
+   - Run-On / Fragmented Sentences (if any):
+   - Transition / Connector Issues (if any):
+
+4. Publication Recommendation:
+    - Keep as-is for book publication
+    - Minor edits recommended before publication
+    - Major editing required before publication
+
+OVERALL ASSESSMENT:
+- CLEAN FOR PUBLICATION / MINOR LINE EDITS REQUIRED / STRUCTURAL REVISION REQUIRED
+- Confidence Level: High / Moderate / Low
+
+**ADDITIONAL RULES**
+1. Every claim must be supported by **at least one exact quoted excerpt** from the sermon.  
+2. Only assign Moderate or High severity if there are **3 or more distinct examples**. Otherwise, assign Low.  
+3. If more than 50% of categories are downgraded during internal validation, mark the audit as **Unstable — Low Confidence**.  
+4. The output must be **concise, factual, and actionable** — no subjective language, no opinions, no extraneous commentary.  
+5. Include all required fields; do not skip categories even if there are no issues. Use “None found” where applicable.
+
+Original Edited Sermon:
+<<<<<<<<<<<<
+{ORIGINAL_SERMON}
+>>>>>>>>>>>>
+
+Final Polished Sermon:
+<<<<<<<<<<<<
+{POLISHED_SERMON}
+>>>>>>>>>>>>
+"""
+
+pub_prompt = """
+You are a Senior Editorial Director evaluating a sermon manuscript for book publication readiness.
+
+You are not comparing versions.
+You are assessing the final manuscript as a standalone work.
+
+CONTEXT METADATA
+
+INTENDED TONE: {TONE}
+SERMON THESIS: {THESIS}
+SERMON SUMMARY: {SUMMARY}
+SERMON OUTLINE: {OUTLINE}
+
+EVALUATION CATEGORIES
+1. Structural Strength
+
+Is the argument clear and logically progressive?
+
+Are transitions smooth?
+
+Are any sections redundant or weak?
+
+2. Clarity & Flow
+
+Are there awkward constructions?
+
+Any loops or subtle repetition?
+
+Any unclear sentences?
+
+3. Theological Precision
+
+Any ambiguous doctrinal phrasing?
+
+Any statements that could be misinterpreted in print?
+
+4. Voice & Tone Alignment
+
+Does the manuscript match the stated tone?
+
+Does it read naturally while retaining spoken cadence?
+
+Is rhetorical intensity appropriate for print?
+
+5. Publication Risk Scan
+
+Identify:
+
+Areas that might confuse readers
+
+Places needing tightening
+
+Any over-editing or under-editing
+
+Any sections that feel unfinished
+
+OUTPUT FORMAT
+
+SECTION 1 — Executive Verdict
+Choose one:
+
+Publication Ready
+
+Minor Revisions Recommended
+
+Substantial Revision Needed
+
+SECTION 2 — Detailed Analysis
+Organized by the five categories above.
+
+SECTION 3 — Precision Notes
+List specific line-level improvements that would raise this from 8/10 to 10/10.
+
+SECTION 4 — Confidence Rating
+Overall book-readiness score (1–10)
+
+Be direct. No generic praise.
+
+Here is the sermon text:
+<<<<<<<<<<<<<<<<
+{SERMON_TEXT}
+>>>>>>>>>>>>>>>>
+"""
+
+prompt = prompt.format(
+    TEXT_TO_POLISH=sermon,
+    TONE=tone,
+    SUMMARY=summary,
+    THESIS=thesis,
+    OUTLINE=outline
+    )
+
+fidelity_prompt = fidelity_prompt.format(
+    ORIGINAL_SERMON=sermon,
+    POLISHED_SERMON=polished_sermon
+)
+
+pub_prompt = pub_prompt.format(
+    TONE=tone,
+    THESIS=thesis,
+    SUMMARY=summary,
+    OUTLINE=outline,
+    SERMON_TEXT=polished_sermon
+)
+
+tokens = tokenizer.encode(fidelity_prompt)
 print(f"Length of tokens: {len(tokens)}")
 
-word_count = len(prompt.split())
+word_count = len(fidelity_prompt.split())
 print(f"Sermon Word count: {len(sermon.split())}")
-print(f"prompt word count: {len(prompt.split())}")
+print(f"prompt word count: {len(fidelity_prompt.split())}")
 print(f"Original transcript word count: {len(og_transcript.split())}")
 
 model1 = "mistral-nemo:latest"
@@ -1117,7 +1664,14 @@ client = OllamaClient(model=model2, num_ctx = 32768, temperature=0.1)
 import time
 
 start = time.time()
-response = client.submit_prompt(prompt)
+response = client.submit_prompt(fidelity_prompt)
+end = time.time()
+print(f"Response time: {end - start:.2f} seconds")
+print(f"Response received with {len(response.output.split())} words.")
+print(response.output)
+print('***\n\n****\n\n')
+start = time.time()
+response = client.submit_prompt(pub_prompt)
 end = time.time()
 print(f"Response time: {end - start:.2f} seconds")
 print(f"Response received with {len(response.output.split())} words.")
