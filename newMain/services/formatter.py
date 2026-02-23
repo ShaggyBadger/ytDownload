@@ -247,12 +247,14 @@ class Formatter:
                 logger.info(
                     f"Processing: {current_idx}/{total} sentences for paragraphing (Ollama)."
                 )
+                self.console.print(f"[bold blue]Processing chunk {current_idx // self.sentence_chunk_size + 1} of sentences for Ollama paragraphing...[/bold blue]")
 
                 chunk = sentences[current_idx : current_idx + self.sentence_chunk_size]
                 # Provide context from previous paragraphs to help Ollama make better decisions.
                 context = paragraphs[-self.context_paragraph_count :]
 
                 prompt = self._build_ollama_prompt(context, chunk)
+                self.console.print("[bold cyan]Sending prompt to Ollama...[/bold cyan]")
 
                 try:
                     ollama_response = self.ollama_client.submit_prompt(prompt)
