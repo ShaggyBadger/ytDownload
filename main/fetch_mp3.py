@@ -125,6 +125,7 @@ def process_selected_videos(videos_to_process):
                 "keepvideo": False,
                 "progress_hooks": [progress_hook],
                 "postprocessor_hooks": [postprocessor_hook],
+                "ignore_no_formats_error": True,
             }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 try:

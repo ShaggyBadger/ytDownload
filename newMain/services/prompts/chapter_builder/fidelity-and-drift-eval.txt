@@ -55,6 +55,9 @@ FINAL AUDIT REPORT
     - Minor edits recommended before publication
     - Major editing required before publication
 
+OVERVIEW OF CHANGES
+- Generate a report on the changes made between the orginal file and the polished file
+
 OVERALL ASSESSMENT:
 - CLEAN FOR PUBLICATION / MINOR LINE EDITS REQUIRED / STRUCTURAL REVISION REQUIRED
 - Confidence Level: High / Moderate / Low

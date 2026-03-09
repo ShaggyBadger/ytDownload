@@ -14,6 +14,11 @@ __pycache__/
 *.log
 *.ini
 *.ods
+
+# catch the ods lock files
+*.ods*
+
+# other stuff
 alembic/
 *.mp3
 newMain/jobs/

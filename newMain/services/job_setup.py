@@ -25,7 +25,7 @@ import csv
 from pathlib import Path
 
 from rich.console import Console
-from rich.prompt import Prompt
+from rich.prompt import Prompt, Confirm
 from rich.table import Table
 
 from database.session_manager import get_session
@@ -101,16 +101,24 @@ class IngestLink:
     def _get_video_metadata(self, url: str) -> dict:
         """
         Fetches video metadata using yt-dlp without downloading the video.
-        Configured to use browser cookies and remote components for robustness.
+
+        This method is designed for high reliability, using browser cookies and remote
+        JavaScript solvers to bypass bot detection. It implements a two-stage fetch
+        strategy specifically for handled finished live streams:
+        1. Initial Attempt: Fetches normally.
+        2. Fallback: If the initial fetch fails (common for recently ended live events),
+           it prompts the user to retry with 'ignore_no_formats_error' enabled.
 
         Args:
             url (str): The YouTube video URL to fetch metadata for.
 
         Returns:
-            dict: A dictionary containing relevant video metadata, or an empty dict on failure.
+            dict: A dictionary containing extracted video metadata fields,
+                  or an empty dict if the fetch fails or is declined by the user.
         """
-        logger.info(f"Fetching metadata with yt-dlp for URL: '{url}'")
-        # yt-dlp options to fetch info only, use browser cookies, and enable remote JS solver
+        logger.info(f"Initiating metadata extraction for URL: '{url}'")
+
+        # Base yt-dlp options for metadata-only extraction
         ydl_opts = {
             "cookiesfrombrowser": ("firefox",),
             "remote_components": ["ejs:github"],
@@ -123,48 +131,70 @@ class IngestLink:
             "no_warnings": True,
         }
 
-        logger.debug(f"yt-dlp options for metadata extraction: {ydl_opts}")
-
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # Remove timestamp from URL to ensure consistent metadata fetching
+        def perform_fetch(options: dict) -> dict:
+            """Helper to execute the actual yt-dlp extraction."""
+            with yt_dlp.YoutubeDL(options) as ydl:
+                # Remove timestamp/tracking params from URL for consistent ID matching
                 cleaned_url = url.split("&t=")[0]
-                logger.debug(f"Cleaned URL for yt-dlp: '{cleaned_url}'")
-                info_dict = ydl.extract_info(cleaned_url, download=False)
-                logger.debug(
-                    f"Raw info_dict received from yt-dlp for '{cleaned_url}': {info_dict}"
-                )
+                logger.debug(f"Targeting cleaned URL: '{cleaned_url}'")
+                return ydl.extract_info(cleaned_url, download=False)
 
-                # Extract specific fields from the info_dict
-                video_details = {
-                    "yt_id": info_dict.get("id"),
-                    "title": info_dict.get("title"),
-                    "uploader": info_dict.get("uploader"),
-                    "channel_id": info_dict.get("channel_id"),
-                    "channel_url": info_dict.get("channel_url"),
-                    "upload_date": info_dict.get("upload_date"),  # Format YYYYMMDD
-                    "duration": info_dict.get("duration"),  # In seconds
-                    "webpage_url": info_dict.get("webpage_url"),
-                    "description": info_dict.get("description"),
-                    "thumbnail": info_dict.get("thumbnail"),
-                    "was_live": info_dict.get("was_live"),
-                    "live_status": info_dict.get("live_status"),
-                }
-                logger.debug(
-                    f"Successfully fetched and parsed metadata for yt_id: '{video_details.get('yt_id')}': {video_details}"
-                )
-                return video_details
+        info_dict = None
+        try:
+            # Stage 1: Standard Fetch
+            logger.debug(f"Stage 1: Attempting metadata fetch with standard options: {ydl_opts}")
+            info_dict = perform_fetch(ydl_opts)
         except yt_dlp.utils.DownloadError as e:
-            logger.error(
-                f"yt-dlp failed to fetch metadata for URL: '{url}'. Error: {e}",
+            # Stage 2: Handle failure (often due to live stream processing state)
+            logger.warning(f"Standard metadata fetch failed for '{url}'. Error details: {e}")
+            
+            self.console.print("\n") # Visual spacing
+            if Confirm.ask(
+                f"[yellow]Metadata fetch failed. This often happens with recently ended live streams.[/yellow]\n"
+                f"[bold cyan]Retry with 'ignore_no_formats_error' enabled?[/bold cyan]"
+            ):
+                logger.info("User requested retry with 'ignore_no_formats_error' flag.")
+                ydl_opts["ignore_no_formats_error"] = True
+                try:
+                    info_dict = perform_fetch(ydl_opts)
+                except Exception as retry_e:
+                    logger.error(f"Metadata fetch failed again on retry for '{url}': {retry_e}", exc_info=True)
+                    return {}
+            else:
+                logger.info("User declined to retry metadata fetch. Aborting extraction.")
+                return {}
+        except Exception as e:
+            # Catch-all for unexpected extraction failures
+            logger.critical(
+                f"Unexpected critical error during metadata extraction for '{url}': {e}",
                 exc_info=True,
             )
             return {}
+
+        if not info_dict:
+            logger.warning(f"Metadata extraction returned no data for URL: '{url}'")
+            return {}
+
+        try:
+            # Map raw yt-dlp fields to our internal VideoInfo structure
+            video_details = {
+                "yt_id": info_dict.get("id"),
+                "title": info_dict.get("title"),
+                "uploader": info_dict.get("uploader"),
+                "channel_id": info_dict.get("channel_id"),
+                "channel_url": info_dict.get("channel_url"),
+                "upload_date": info_dict.get("upload_date"),  # Format: YYYYMMDD
+                "duration": info_dict.get("duration"),        # Seconds
+                "webpage_url": info_dict.get("webpage_url"),
+                "description": info_dict.get("description"),
+                "thumbnail": info_dict.get("thumbnail"),
+                "was_live": info_dict.get("was_live"),
+                "live_status": info_dict.get("live_status"),
+            }
+            logger.debug(f"Successfully mapped metadata for yt_id '{video_details['yt_id']}': {video_details}")
+            return video_details
         except Exception as e:
-            logger.critical(
-                f"An unexpected error occurred during yt-dlp metadata extraction for '{url}'. Error: {e}",
-                exc_info=True,
-            )
+            logger.error(f"Failed to parse and map metadata fields for '{url}': {e}", exc_info=True)
             return {}
 
     def ingest_into_db(self) -> int | None:

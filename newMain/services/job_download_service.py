@@ -9,12 +9,14 @@ import random
 import subprocess
 import os
 from pathlib import Path
+from datetime import datetime, timezone
 from sqlalchemy import or_
 import yt_dlp
 from pydub import AudioSegment
 
 from rich.console import Console
-from rich.prompt import Prompt
+from rich.prompt import Prompt, Confirm
+from rich.panel import Panel
 
 from database.session_manager import get_session
 from database.models import VideoInfo, JobInfo, JobStage, StageState, utcnow
@@ -24,11 +26,24 @@ logger = logging.getLogger(__name__)
 
 
 class Downloader:
+    """
+    Service class responsible for downloading and processing audio from YouTube.
+
+    The Downloader manages the lifecycle of a download job, including:
+    - Managing database state transitions (Pending -> Running -> Success/Failed).
+    - Executing yt-dlp to download high-quality audio with bot-detection bypass.
+    - Handling common YouTube edge cases like recently ended live streams.
+    - Providing visual timing analysis when VOD processing is incomplete.
+    - Trimming audio to user-specified segments using pydub.
+    - Securely cleaning up temporary files after processing.
+    """
+
     def __init__(self):
         self.console = Console()
         logger.debug("Downloader service initialized.")
 
     def run_all(self):
+        """Processes all pending or failed download jobs in the database."""
         logger.info("Starting run_all to process all pending/failed download jobs.")
         try:
             jobs = self._build_available_jobs()
@@ -50,6 +65,7 @@ class Downloader:
             )
 
     def run_one(self):
+        """Allows the user to select a single eligible job for manual download."""
         logger.info(
             "Starting run_one to allow user to select a single job for download."
         )
@@ -155,10 +171,25 @@ class Downloader:
             return job_list
 
     def _download_job(self, job_package: dict):
+        """
+        Orchestrates the complete download and trim workflow for a single job.
+
+        This method executes a sequential pipeline:
+        1. Database Sync: Transitions the 'download_video' stage to 'running'.
+        2. Audio Download: Uses yt-dlp with a smart fallback for new VODs.
+        3. Audio Trimming: Extracts the specific time segment requested.
+        4. Cleanup: Securely deletes the full-length source audio.
+        5. Finalization: Updates the database with success status and file paths.
+
+        Args:
+            job_package (dict): Contains Job ID, URL, directory path, and trim times.
+        """
         job_id = job_package.get("job_id")
-        logger.info(f"Starting download and trim process for Job ID: {job_id}")
+        logger.info(f"Initiating download/trim pipeline for Job ID: {job_id}")
 
         try:
+            # --- 1. Database State Update ---
+            # Mark the stage as 'running' to provide visibility and prevent duplicates.
             with get_session() as session:
                 job_stage = (
                     session.query(JobStage)
@@ -166,39 +197,33 @@ class Downloader:
                     .first()
                 )
                 if job_stage:
-                    logger.debug(
-                        f"Updating Job ID {job_id}, Stage 'download_video' to RUNNING."
-                    )
+                    logger.debug(f"Marking Job {job_id} Stage 'download_video' as RUNNING.")
                     job_stage.state = StageState.running
                     job_stage.started_at = utcnow()
                     session.commit()
 
-            # --- HOOKS for yt-dlp ---
+            # --- yt-dlp Event Hooks ---
             def progress_hook(d):
                 if d.get("status") == "downloading":
-                    logger.debug(
-                        f"yt-dlp progress: {d['_percent_str']} of {d['_total_bytes_str']} at {d['_speed_str']}"
-                    )
+                    logger.debug(f"yt-dlp Progress: {d.get('_percent_str', '0%')} at {d.get('_speed_str', 'N/A')}")
                 if d.get("status") == "finished":
-                    logger.info("yt-dlp download finished.")
+                    logger.info("yt-dlp download byte-transfer complete.")
 
             def postprocessor_hook(d):
                 if d.get("status") == "started":
-                    logger.info(
-                        f"yt-dlp post-processing started: {d.get('postprocessor')}"
-                    )
+                    logger.info(f"yt-dlp starting post-processor: {d.get('postprocessor')}")
                 if d.get("status") == "finished":
-                    logger.info("yt-dlp post-processing finished.")
+                    logger.info(f"yt-dlp finished post-processor: {d.get('postprocessor')}")
 
-            # ------------------------
-
+            # --- 2. Path Configuration ---
             full_audio_path = job_package.get("job_dir") / config.FULL_MP3_NAME
             trimmed_audio_path = job_package.get("job_dir") / config.MP3_SEGMENT_NAME
-            logger.debug(f"Full audio path set to: {full_audio_path}")
-            logger.debug(f"Trimmed audio path set to: {trimmed_audio_path}")
+            logger.debug(f"Targeting paths: Full={full_audio_path}, Segment={trimmed_audio_path}")
 
+            # --- 3. yt-dlp Configuration ---
+            # Audio-only extraction with browser cookie and remote JS support.
             ydl_opts = {
-                "format": "m4a/bestaudio/best",
+                "format": "bestaudio/best",
                 "postprocessors": [
                     {
                         "key": "FFmpegExtractAudio",
@@ -214,99 +239,181 @@ class Downloader:
                 "extractor_args": {
                     "youtube": {"player_client": ["web", "android", "web_safari"]}
                 },
-                "remote_components": [
-                    "ejs:github"
-                ],  # Enable external JavaScript solver
+                "remote_components": ["ejs:github"], # Use remote JS solver for reliability
             }
-            logger.debug(f"yt-dlp options: {ydl_opts}")
 
-            with self.console.status(
-                f"[bold green]Downloading {job_package.get('video_url')}...",
-                spinner=config.SPINNER,
-            ):
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([job_package.get("video_url")])
+            def perform_download(options):
+                """Helper to execute the actual download within a Rich status spinner."""
+                with self.console.status(
+                    f"[bold green]Downloading {job_package.get('video_url')}...",
+                    spinner=config.SPINNER,
+                ):
+                    with yt_dlp.YoutubeDL(options) as ydl:
+                        ydl.download([job_package.get("video_url")])
 
-            with self.console.status(
-                "[bold green]Trimming audio...", spinner=config.SPINNER
-            ):
-                logger.info(f"Loading {full_audio_path} for trimming.")
+            # --- 4. Execution with Failure Interception ---
+            try:
+                logger.debug(f"Attempting initial download for Job {job_id}")
+                perform_download(ydl_opts)
+            except yt_dlp.utils.DownloadError as e:
+                # If formats are missing, it's likely a recently ended live stream.
+                error_msg = str(e)
+                if "No video formats found" in error_msg or "This live event has ended" in error_msg:
+                    logger.warning(f"Download failed for Job {job_id} (Dead Zone detected). Error: {error_msg}")
+                    
+                    # Show user exactly why it might be failing based on time since release.
+                    self._display_timing_report(job_package.get("video_url"))
+                    
+                    self.console.print("\n") # Visual spacing
+                    if Confirm.ask(
+                        f"[yellow]Download failed for Job {job_id}: Video not ready yet.[/yellow]\n"
+                        f"[bold cyan]Retry with 'ignore_no_formats_error' enabled?[/bold cyan]"
+                    ):
+                        logger.info(f"User requested retry with bypass flag for Job {job_id}.")
+                        ydl_opts["ignore_no_formats_error"] = True
+                        perform_download(ydl_opts)
+                    else:
+                        logger.info(f"User declined retry for Job {job_id}. Aborting.")
+                        raise
+                else:
+                    # Rethrow other download errors (e.g., 403 Forbidden, Private Video)
+                    raise
+
+            # --- 5. Audio Trimming ---
+            with self.console.status("[bold green]Trimming audio segment...", spinner=config.SPINNER):
+                logger.info(f"Loading {full_audio_path} for segment extraction.")
                 audio = AudioSegment.from_file(full_audio_path)
+                
                 start_ms = job_package.get("audio_start_time") * 1000
                 end_ms = (
                     job_package.get("audio_end_time") * 1000
                     if job_package.get("audio_end_time") > 0
                     else len(audio)
                 )
-                logger.info(f"Trimming audio from {start_ms}ms to {end_ms}ms.")
+                
+                logger.info(f"Extracting segment: {start_ms}ms to {end_ms}ms.")
                 trimmed_audio = audio[start_ms:end_ms]
                 trimmed_audio.export(trimmed_audio_path, format="mp3")
-                logger.info(
-                    f"Successfully exported trimmed audio to {trimmed_audio_path}"
-                )
+                logger.info(f"Trimmed audio exported to: {trimmed_audio_path}")
 
+            # --- 6. Secure Cleanup ---
             self._secure_delete_file(full_audio_path)
 
+            # --- 7. Finalize Database State ---
             with get_session() as session:
-                logger.debug(f"Updating final stage statuses for Job ID {job_id}.")
-                dl_stage = (
-                    session.query(JobStage)
-                    .filter_by(job_id=job_id, stage_name="download_video")
-                    .first()
-                )
-                ea_stage = (
-                    session.query(JobStage)
-                    .filter_by(job_id=job_id, stage_name="extract_audio")
-                    .first()
-                )
+                logger.debug(f"Updating completion statuses for Job ID {job_id}.")
+                dl_stage = session.query(JobStage).filter_by(job_id=job_id, stage_name="download_video").first()
+                ea_stage = session.query(JobStage).filter_by(job_id=job_id, stage_name="extract_audio").first()
 
                 if dl_stage:
                     dl_stage.state = StageState.success
                     dl_stage.finished_at = utcnow()
-                    logger.info(
-                        f"Set Job ID {job_id} Stage 'download_video' to SUCCESS."
-                    )
+                    logger.info(f"Job {job_id} 'download_video' finalizing: SUCCESS")
 
                 if ea_stage:
                     ea_stage.state = StageState.success
                     ea_stage.finished_at = utcnow()
                     ea_stage.output_path = str(trimmed_audio_path)
-                    logger.info(
-                        f"Set Job ID {job_id} Stage 'extract_audio' to SUCCESS with output path: {trimmed_audio_path}"
-                    )
+                    logger.info(f"Job {job_id} 'extract_audio' finalizing: SUCCESS")
 
                 session.commit()
-            self.console.print(f"Successfully processed job {job_id}.", style="green")
-        except Exception:
-            logger.error(
-                f"A critical error occurred during the download/trim process for Job ID {job_id}.",
-                exc_info=True,
-            )
-            with get_session() as session:
-                job_stage = (
-                    session.query(JobStage)
-                    .filter_by(job_id=job_id, stage_name="download_video")
-                    .first()
-                )
-                if job_stage:
-                    job_stage.state = StageState.failed
-                    job_stage.finished_at = utcnow()
-                    job_stage.last_error = "Check logs for details."
-                    session.commit()
-                    logger.info(
-                        f"Set Job ID {job_id} Stage 'download_video' to FAILED in database."
+            
+            self.console.print(f"Successfully processed Job {job_id}.", style="green")
+
+        except Exception as e:
+            logger.error(f"Critical error in Job {job_id} pipeline: {e}", exc_info=True)
+            self._handle_job_failure(job_id, str(e))
+
+    def _handle_job_failure(self, job_id: int, error_msg: str):
+        """Helper to mark a job stage as failed in the database."""
+        with get_session() as session:
+            job_stage = session.query(JobStage).filter_by(job_id=job_id, stage_name="download_video").first()
+            if job_stage:
+                job_stage.state = StageState.failed
+                job_stage.finished_at = utcnow()
+                job_stage.last_error = error_msg
+                session.commit()
+                logger.info(f"Job {job_id} 'download_video' stage marked as FAILED in database.")
+        self.console.print(f"Error processing job {job_id}. See logs for details.", style="red")
+
+    def _display_timing_report(self, url: str):
+        """
+        Analyzes video release timing and displays a detailed report.
+
+        This performs an on-the-fly metadata fetch to determine if a download failure
+        is likely due to pending VOD processing on YouTube's backend.
+        """
+        logger.info(f"Running VOD readiness analysis for URL: {url}")
+        
+        ydl_opts = {
+            "cookiesfrombrowser": ("firefox",),
+            "remote_components": ["ejs:github"],
+            "extractor_args": {"youtube": {"player_client": ["web", "android", "web_safari"]}},
+            "skip_download": True,
+            "quiet": True,
+            "no_warnings": True,
+            "ignore_no_formats_error": True, # Required to get metadata during dead zone
+        }
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                
+                # Use release_timestamp (live end) or timestamp (regular video start)
+                ts = info.get("release_timestamp") or info.get("timestamp")
+                
+                if ts:
+                    dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+                    now = datetime.now(timezone.utc)
+                    diff = now - dt
+                    
+                    total_minutes = int(diff.total_seconds() / 60)
+                    hours = total_minutes // 60
+                    minutes = total_minutes % 60
+                    
+                    # Build and display the report panel
+                    report = (
+                        f"[bold white]Video Title:[/bold white] {info.get('title')}\n"
+                        f"[bold white]Live Status:[/bold white] {info.get('live_status', 'N/A')}\n"
+                        f"[bold white]Event Ended:[/bold white] {dt.strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
+                        f"[bold white]Current Time:[/bold white] {now.strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
+                        f"[bold white]Time Elapsed:[/bold white] [bold yellow]{hours}h {minutes}m[/bold yellow]\n\n"
                     )
-            self.console.print(
-                f"Error processing job {job_id}. Check logs for details.", style="red"
-            )
+                    
+                    if total_minutes < 60:
+                        report += (
+                            "[bold red]CRITICAL: This stream ended very recently.[/bold red]\n"
+                            "YouTube usually requires [bold yellow]30-60 minutes[/bold yellow] to generate the\n"
+                            "high-quality VOD audio files after a stream ends."
+                        )
+                    else:
+                        report += (
+                            "[bold green]ANALYSIS: Sufficient time has likely passed for VOD processing.[/bold green]\n"
+                            "If failure persists, check for regional blocks or availability issues."
+                        )
+
+                    self.console.print("\n")
+                    self.console.print(Panel(
+                        report, 
+                        title="[bold cyan]VOD Readiness Analysis[/bold cyan]", 
+                        border_style="cyan",
+                        expand=False
+                    ))
+                else:
+                    logger.warning(f"No valid timestamp found in metadata for {url}.")
+                    self.console.print("[yellow]Could not determine exact release time for this video.[/yellow]")
+        except Exception as e:
+            logger.error(f"Failed to generate timing report: {e}", exc_info=True)
 
     def _secure_delete_file(self, file_path: Path):
+        """Attempts to securely delete a file using 'shred', falling back to os.remove."""
         logger.info(f"Attempting to securely delete file: {file_path}")
         if not file_path.exists():
             logger.warning(f"File not found for secure deletion: {file_path}")
             return
 
         try:
+            # Use GNU shred to overwrite and delete the file.
             cmd = ["shred", "-uz", str(file_path)]
             logger.debug(f"Running secure delete command: {' '.join(cmd)}")
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)

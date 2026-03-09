@@ -27,6 +27,7 @@ def get_video_metadata(url):
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
+        "ignore_no_formats_error": True,
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
